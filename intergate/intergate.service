@@ -1,0 +1,17 @@
+[Unit]
+Description=intergate
+After=network.target
+
+[Service]
+User=intergate
+Group=intergate
+Type=simple
+Environment="RUST_BACKTRACE=1"
+ExecStart=/home/intergate/intergate
+Restart=on-failure
+RestartSec=8s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
