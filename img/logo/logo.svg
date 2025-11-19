@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="800"
+   height="300"
+   viewBox="0 0 800 300"
+   version="1.1"
+   id="svg1884"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   sodipodi:docname="logo.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1886"
+     pagecolor="#505050"
+     bordercolor="#ffffff"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="1"
+     inkscape:deskcolor="#505050"
+     inkscape:document-units="mm"
+     showgrid="false"
+     inkscape:zoom="1.829812"
+     inkscape:cx="393.48304"
+     inkscape:cy="432.01159"
+     inkscape:window-width="1900"
+     inkscape:window-height="2089"
+     inkscape:window-x="1555"
+     inkscape:window-y="32"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1881" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <rect
+       style="fill:#000000;stroke-width:0.835973"
+       id="rect1940"
+       width="827.12109"
+       height="333.36755"
+       x="-13.116102"
+       y="-16.395126"
+       ry="0" />
+    <text
+       xml:space="preserve"
+       style="font-weight:bold;font-size:266.667px;font-family:monospace;-inkscape-font-specification:'monospace, Bold';fill:#66ff00;fill-opacity:1;stroke-width:1.19143"
+       x="-6.3738852"
+       y="218.84619"
+       id="text1944"
+       transform="scale(0.98477925,1.015456)"><tspan
+         sodipodi:role="line"
+         id="tspan1942"
+         x="-6.3738852"
+         y="218.84619"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:266.667px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#66ff00;fill-opacity:1;stroke-width:1.19143">𝟠𝕚𝕟𝕒𝕣𝕪</tspan></text>
+  </g>
+</svg>
