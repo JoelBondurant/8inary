@@ -1,24 +1,23 @@
 mod agent;
 mod machines;
+mod setup;
 
 use anyhow::Result;
-use agent::Agent;
-use machines::{Group, get_machines};
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-	let dev_machines = get_machines(Group::DevGroup);
-	let dm = dev_machines[0].clone();
-	let is_local = dm.is_local().await?;
-	let ip = dm.ip;
-	println!("ip: {ip}");
-	println!("Is Local: {is_local:?}");
-	let mut agent = Agent::new(&dm).await?;
-	let (exit_code, msg) = agent
-		.execute("swapon --show")
-		.await?;
-	println!("Exitcode: {exit_code:?}");
-	println!("Message: {msg:?}");
-	agent.close().await?;
+	fmt()
+		.with_ansi(true)
+		.with_env_filter(EnvFilter::new("info"))
+		.with_file(true)
+		.with_line_number(true)
+		.with_target(true)
+		.with_thread_ids(true)
+		.with_thread_names(true)
+		.with_timer(fmt::time::SystemTime)
+		.compact()
+		.init();
+	setup::setup().await?;
 	Ok(())
 }

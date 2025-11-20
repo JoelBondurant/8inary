@@ -14,12 +14,16 @@ pub struct Machine {
 #[allow(dead_code)]
 impl Machine {
 	pub async fn is_local(&self) -> Result<bool> {
-		let ip_response = Command::new("hostname").arg("-I").output().await.unwrap();
+		let ip_response = Command::new("hostname")
+			.arg("-I")
+			.output()
+			.await
+			.expect("hostname call failed to resolve ip address.");
 		let ip_self = std::str::from_utf8(&ip_response.stdout)
-			.unwrap()
+			.expect("hostname ip address was not utf8.")
 			.trim()
 			.parse::<Ipv4Addr>()
-			.unwrap();
+			.expect("hostname ip address was not ipv4.");
 		Ok(self.ip == ip_self)
 	}
 }
@@ -83,7 +87,7 @@ pub fn get_machines(group: Group) -> Vec<Machine> {
 		.groups
 		.get(&group)
 		.cloned()
-		.expect("group not found")
+		.expect("invalid machine group.")
 }
 
 #[cfg(test)]

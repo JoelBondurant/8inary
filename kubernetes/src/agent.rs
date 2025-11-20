@@ -31,7 +31,7 @@ impl Agent {
 	pub async fn new(
 		machine: &Machine,
 	) -> Result<Self> {
-		let key_path = "/home/joel/.ssh/id_ed25519";
+		let key_path = std::env::var("HOME").expect("HOME not defined.") + "/.ssh/id_ed25519";
 		let user = machine.user;
 		let host = machine.ip;
 		let port = machine.port;
@@ -86,7 +86,7 @@ impl Agent {
 				_ => {}
 			}
 		}
-		let stdout = String::from_utf8(output).unwrap_or_default();
+		let stdout = String::from_utf8(output).expect("Non-utf8 output encountered.");
 		Ok((
 			code.expect("Command did not exit cleanly"),
 			stdout,
