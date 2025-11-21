@@ -7,6 +7,7 @@ use russh::{
 	},
 	ChannelMsg, Disconnect, Preferred,
 };
+use tokio::process::Command;
 use std::{borrow::Cow, sync::Arc, time::Duration};
 
 struct SshClient {}
@@ -23,7 +24,7 @@ impl Handler for SshClient {
 }
 
 pub struct Agent {
-	session: Handle<SshClient>,
+	session: Option<Handle<SshClient>>,
 }
 
 impl Agent {
@@ -31,12 +32,11 @@ impl Agent {
 	pub async fn new(
 		machine: &Machine,
 	) -> Result<Self> {
+		if machine.is_local().await? {
+			return Ok(Self { session: None });
+		}
 		let key_path = std::env::var("HOME").expect("HOME not defined.") + "/.ssh/id_ed25519";
-		let user = machine.user;
-		let host = machine.ip;
-		let port = machine.port;
-		let addrs = (host, port);
-		let key_pair = load_secret_key(key_path, None)?;
+		let key_pair = load_secret_key(key_path, None).expect("SSH secret key loading failure.");
 		let config = Config {
 			inactivity_timeout: Some(Duration::from_secs(5)),
 			preferred: Preferred {
@@ -50,10 +50,10 @@ impl Agent {
 		};
 		let config = Arc::new(config);
 		let sh = SshClient {};
-		let mut session = connect(config, addrs, sh).await?;
+		let mut session = connect(config, (machine.ip, machine.port), sh).await?;
 		let auth_res = session
 			.authenticate_publickey(
-				user,
+				machine.user,
 				PrivateKeyWithHashAlg::new(
 					Arc::new(key_pair),
 					session.best_supported_rsa_hash().await?.flatten(),
@@ -63,40 +63,60 @@ impl Agent {
 		if !auth_res.success() {
 			anyhow::bail!("Authentication (with publickey) failed");
 		}
-		Ok(Self { session })
+		Ok(Self { session: Some(session) })
 	}
 
 	pub async fn execute(&mut self, command: &str) -> Result<(u32, String)> {
-		let cmd = format!("/bin/bash -c \"{}\"", command);
-		let mut channel = self.session.channel_open_session().await?;
-		channel.exec(true, cmd).await?;
-		let mut code = None;
+		let mut exit_code = None;
 		let mut output = Vec::new();
-		loop {
-			let Some(msg) = channel.wait().await else {
-				break;
-			};
-			match msg {
-				ChannelMsg::Data { ref data } => {
-					output.extend_from_slice(data);
+		match &mut self.session {
+			None => {
+				let mut cmd_builder = Command::new("/bin/bash");
+				cmd_builder.arg("-c");
+				cmd_builder.arg(command);
+				let response = cmd_builder
+					.output()
+					.await
+					.expect("Bash call failed.");
+				exit_code = Some(response.status.code().unwrap_or(1) as u32);
+				output = response.stdout;
+			}
+			Some(session) => {
+				let cmd = format!("/bin/bash -c \"{}\"", command);
+				let mut channel = session
+					.channel_open_session()
+					.await
+					.expect("SSH session failure.");
+				channel.exec(true, cmd).await?;
+				loop {
+					let Some(msg) = channel.wait().await else {
+						break;
+					};
+					match msg {
+						ChannelMsg::Data { ref data } => {
+							output.extend_from_slice(data);
+						}
+						ChannelMsg::ExitStatus { exit_status } => {
+							exit_code = Some(exit_status);
+						}
+						_ => {}
+					}
 				}
-				ChannelMsg::ExitStatus { exit_status } => {
-					code = Some(exit_status);
-				}
-				_ => {}
 			}
 		}
 		let stdout = String::from_utf8(output).expect("Non-utf8 output encountered.");
 		Ok((
-			code.expect("Command did not exit cleanly"),
+			exit_code.expect("Command did not exit cleanly"),
 			stdout,
 		))
 	}
 
 	pub async fn close(&mut self) -> Result<()> {
-		self.session
-			.disconnect(Disconnect::ByApplication, "Disconnected", "English")
-			.await?;
+		if let Some(session) = &self.session {
+			session
+				.disconnect(Disconnect::ByApplication, "Disconnected", "English")
+				.await?;
+		}
 		Ok(())
 	}
 }

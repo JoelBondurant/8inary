@@ -18,12 +18,12 @@ impl Machine {
 			.arg("-I")
 			.output()
 			.await
-			.expect("hostname call failed to resolve ip address.");
+			.expect("Hostname call failed to resolve ip address.");
 		let ip_self = std::str::from_utf8(&ip_response.stdout)
-			.expect("hostname ip address was not utf8.")
+			.expect("Hostname ip address was not utf8.")
 			.trim()
 			.parse::<Ipv4Addr>()
-			.expect("hostname ip address was not ipv4.");
+			.expect("Hostname ip address was not ipv4.");
 		Ok(self.ip == ip_self)
 	}
 }
@@ -87,7 +87,7 @@ pub fn get_machines(group: Group) -> Vec<Machine> {
 		.groups
 		.get(&group)
 		.cloned()
-		.expect("invalid machine group.")
+		.expect("Invalid machine group.")
 }
 
 #[cfg(test)]

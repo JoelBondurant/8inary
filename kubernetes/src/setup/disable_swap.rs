@@ -7,24 +7,26 @@ pub struct DisableSwap;
 
 impl CheckSetCommand for DisableSwap {
 	async fn check(&self, agent: &mut Agent) -> Result<bool> {
-		info!("  -> Checking if swap is disabled...");
-		let output = agent.execute("swapon -s").await?;
+		info!("Check if swap is disabled.");
+		let output = agent.execute(r"swapon -s").await?;
 		if !output.1.trim().is_empty() {
+			info!("Swap is enabled.");
 			return Ok(false);
 		}
-		let fstab_output = agent.execute("grep -vE '^\\s*#' /etc/fstab | grep 'swap'").await?;
+		let fstab_output = agent.execute(r"grep -vE '^\s*#' /etc/fstab | grep 'swap'").await?;
 		if !fstab_output.1.trim().is_empty() {
+			info!("Swap is enabled in fstab.");
 			return Ok(false);
 		}
-		info!("  -> Swap is already disabled and permanently removed from fstab.");
+		info!("Swap is already disabled and absent in fstab.");
 		Ok(true)
 	}
 
 	async fn set(&self, agent: &mut Agent) -> Result<()> {
-		info!("  -> Disabling swap...");
-		agent.execute("sudo swapoff -a").await?;
-		agent.execute("sudo sed -i '/\\s*swap\\s*/d' /etc/fstab").await?;
-		info!("  -> Swap has been successfully disabled and removed from fstab.");
+		info!("Disabling swap.");
+		agent.execute(r"sudo swapoff -a").await?;
+		agent.execute(r"sudo sed -i '/\s*swap\s*/d' /etc/fstab").await?;
+		info!("Swap has been successfully disabled and removed from fstab.");
 		Ok(())
 	}
 }

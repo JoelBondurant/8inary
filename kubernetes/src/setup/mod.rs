@@ -18,10 +18,10 @@ pub async fn setup() -> Result<()> {
 	let is_local = dm.is_local().await?;
 	let ip = dm.ip;
 	info!("ip: {ip}");
-	info!("Is Local: {is_local:?}");
+	info!("is_local: {is_local:?}");
 	let mut agent = Agent::new(&dm).await?;
 	let cmd = DisableSwap;
-	if cmd.check(&mut agent).await? {
+	if !cmd.check(&mut agent).await? {
 		cmd.set(&mut agent).await?;
 	}
 	agent.close().await?;
