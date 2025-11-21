@@ -1,36 +1,35 @@
 mod disable_swap;
 mod kernel_modules;
+mod sysctl;
 
 use crate::agent::Agent;
 use crate::machines::{self, Group};
 use crate::setup::disable_swap::DisableSwap;
 use crate::setup::kernel_modules::KernelModules;
-use anyhow::Result;
+use crate::setup::sysctl::Sysctl;
 use tracing::info;
 
-pub trait CheckSetCommand {
-	async fn check(&self, agent: &mut Agent) -> Result<bool>;
-	async fn set(&self, agent: &mut Agent) -> Result<()>;
+pub trait SetupStep {
+	fn check(&self, agent: &Agent) -> bool;
+	fn set(&self, agent: &Agent);
 }
 
-pub async fn setup() -> Result<()> {
+pub fn setup() {
 	info!("Kubernetes setup started.");
 	let dev_machines = machines::get_machines(Group::DevGroup);
-	let dm = dev_machines[0].clone();
-	let is_local = dm.is_local().await?;
+	let dm = dev_machines[3].clone();
 	let ip = dm.ip;
 	info!("ip: {ip}");
-	info!("is_local: {is_local:?}");
-	let mut agent = Agent::new(&dm).await?;
-	let cmd = DisableSwap;
-	if !cmd.check(&mut agent).await? {
-		cmd.set(&mut agent).await?;
+	let steps: Vec<Box<dyn SetupStep>> = vec![
+		Box::new(DisableSwap),
+		Box::new(KernelModules),
+		Box::new(Sysctl),
+	];
+	let agent = Agent::new();
+	for step in steps.iter() {
+		if !step.check(&agent) {
+			step.set(&agent);
+		}
 	}
-	let cmd = KernelModules;
-	if !cmd.check(&mut agent).await? {
-		cmd.set(&mut agent).await?;
-	}
-	agent.close().await?;
 	info!("Kubernetes setup finished.");
-	Ok(())
 }

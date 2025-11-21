@@ -1,29 +1,12 @@
-use anyhow::Result;
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
-use tokio::process::Command;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Machine {
 	pub ip: Ipv4Addr,
 	pub port: u16,
 	pub user: &'static str,
-}
-
-impl Machine {
-	pub async fn is_local(&self) -> Result<bool> {
-		let ip_response = Command::new("hostname")
-			.arg("-I")
-			.output()
-			.await
-			.expect("Hostname call failed to resolve ip address.");
-		let ip_self = std::str::from_utf8(&ip_response.stdout)
-			.expect("Hostname ip address was not utf8.")
-			.trim()
-			.parse::<Ipv4Addr>()
-			.expect("Hostname ip address was not ipv4.");
-		Ok(self.ip == ip_self)
-	}
 }
 
 const fn ip(ip_bytes: [u8; 4]) -> Ipv4Addr {
