@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use tokio::process::Command;
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Machine {
 	pub ip: Ipv4Addr,
@@ -11,7 +10,6 @@ pub struct Machine {
 	pub user: &'static str,
 }
 
-#[allow(dead_code)]
 impl Machine {
 	pub async fn is_local(&self) -> Result<bool> {
 		let ip_response = Command::new("hostname")

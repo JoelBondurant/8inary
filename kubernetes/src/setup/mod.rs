@@ -1,8 +1,10 @@
 mod disable_swap;
+mod kernel_modules;
 
 use crate::agent::Agent;
 use crate::machines::{self, Group};
 use crate::setup::disable_swap::DisableSwap;
+use crate::setup::kernel_modules::KernelModules;
 use anyhow::Result;
 use tracing::info;
 
@@ -21,6 +23,10 @@ pub async fn setup() -> Result<()> {
 	info!("is_local: {is_local:?}");
 	let mut agent = Agent::new(&dm).await?;
 	let cmd = DisableSwap;
+	if !cmd.check(&mut agent).await? {
+		cmd.set(&mut agent).await?;
+	}
+	let cmd = KernelModules;
 	if !cmd.check(&mut agent).await? {
 		cmd.set(&mut agent).await?;
 	}
