@@ -1,5 +1,3 @@
-mod agent;
-mod machines;
 mod setup;
 
 use tracing_subscriber::{fmt, EnvFilter};

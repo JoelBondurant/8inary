@@ -1,25 +1,46 @@
-use crate::agent::Agent;
 use crate::setup::SetupStep;
+use hex_literal::hex;
+use sha2::{Digest, Sha256};
+use std::{fs, path::Path, process::Command};
 use tracing::info;
 
 pub struct KernelModules;
 
+impl KernelModules {
+	pub const CONFIG_PATH: &str = "/etc/modules-load.d/k8s.conf";
+
+	pub fn is_loaded(module_name: &str) -> bool {
+		Path::new("/sys/module/").join(module_name).exists()
+	}
+
+	pub fn load(module_name: &str) {
+		info!("Loading kernel module: {module_name}.");
+		Command::new("modprobe")
+			.arg(module_name)
+			.status()
+			.expect("modprobe failure.");
+	}
+}
+
 impl SetupStep for KernelModules {
-	fn check(&self, agent: &Agent) -> bool {
+	fn check(&self) -> bool {
 		info!("Check for kernel modules.");
-		let output =
-			agent.execute("sha256sum /etc/modules-load.d/k8s.conf 2> /dev/null | cut -d ' ' -f 1");
-		if output.1.trim() != "fcaf07413a456d658640930cef56ed4d13330123e3b522c481021613c64755e3" {
-			info!("Kernel modules are not configured in k8s.conf.");
+		const EXPECTED: [u8; 32] =
+			hex!("fcaf07413a456d658640930cef56ed4d13330123e3b522c481021613c64755e3");
+		let Ok(config_txt) = fs::read(KernelModules::CONFIG_PATH) else {
+			info!("Kernel module config missing or unreadable.");
+			return false;
+		};
+		let is_valid = Sha256::digest(&config_txt)[..] == EXPECTED;
+		if !is_valid {
+			info!("Kernel modules are misconfigured.");
 			return false;
 		}
-		let output = agent.execute("lsmod | grep overlay");
-		if output.1.trim().is_empty() {
+		if !KernelModules::is_loaded("overlay") {
 			info!("Overlay fs kernel module not loaded.");
 			return false;
 		}
-		let output = agent.execute("lsmod | grep br_netfilter");
-		if output.1.trim().is_empty() {
+		if !KernelModules::is_loaded("br_netfilter") {
 			info!("Bridge netfilter kernel module not loaded.");
 			return false;
 		}
@@ -27,16 +48,13 @@ impl SetupStep for KernelModules {
 		true
 	}
 
-	fn set(&self, agent: &Agent) {
+	fn set(&self) {
 		info!("Configuring kernel modules.");
-		let content = "overlay\\nbr_netfilter\\n";
-		let command = format!(
-			r#"sudo sh -c 'printf "{}" > /etc/modules-load.d/k8s.conf'"#,
-			content
-		);
-		agent.execute(&command);
-		agent.execute("sudo modprobe overlay");
-		agent.execute("sudo modprobe br_netfilter");
+		let config_txt = "overlay\nbr_netfilter\n";
+		sudo::escalate_if_needed().expect("Failed to escalate privileges.");
+		fs::write(KernelModules::CONFIG_PATH, config_txt).unwrap();
+		KernelModules::load("overlay");
+		KernelModules::load("br_netfilter");
 		info!("Kernel modules have been successfully configured and loaded.");
 	}
 }

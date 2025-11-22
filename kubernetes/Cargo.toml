@@ -5,5 +5,8 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
+hex-literal = "1.1.0"
+sha2 = "0.10.9"
+sudo = "0.6.0"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["fmt", "ansi", "env-filter"] }
