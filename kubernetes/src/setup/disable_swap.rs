@@ -5,6 +5,10 @@ use tracing::info;
 pub struct DisableSwap;
 
 impl SetupStep for DisableSwap {
+	fn name(&self) -> &'static str {
+		"DisableSwap"
+	}
+
 	fn check(&self) -> bool {
 		info!("Check if swap is disabled.");
 		let is_swap_on = fs::read_to_string("/proc/swaps").unwrap().lines().count() > 1;
@@ -55,7 +59,7 @@ impl SetupStep for DisableSwap {
 		};
 		if final_content.as_bytes() != original.as_bytes() {
 			info!("Removing swap entries from /etc/fstab.");
-			sudo::escalate_if_needed().expect("Fatal sudo failure.");
+			sudo::escalate_if_needed().expect("Failed to escalate privileges.");
 			fs::write(config_path, final_content).expect("Fatal fstab write failure.");
 		}
 	}

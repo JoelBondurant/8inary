@@ -11,6 +11,10 @@ impl Sysctl {
 }
 
 impl SetupStep for Sysctl {
+	fn name(&self) -> &'static str {
+		"Sysctl"
+	}
+
 	fn check(&self) -> bool {
 		info!("Check for sysctl configuration.");
 		const EXPECTED: [u8; 32] =

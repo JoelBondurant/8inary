@@ -23,6 +23,10 @@ impl KernelModules {
 }
 
 impl SetupStep for KernelModules {
+	fn name(&self) -> &'static str {
+		"KernelModules"
+	}
+
 	fn check(&self) -> bool {
 		info!("Check for kernel modules.");
 		const EXPECTED: [u8; 32] =
