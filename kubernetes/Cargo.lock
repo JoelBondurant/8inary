@@ -86,6 +86,8 @@ dependencies = [
  "sha2",
  "sudo",
  "tracing",
+ "tracing-journald",
+ "tracing-panic",
  "tracing-subscriber",
 ]
 
@@ -267,6 +269,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing-journald"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc0b4143302cf1022dac868d521e36e8b27691f72c84b3311750d5188ebba657"
+dependencies = [
+ "libc",
+ "tracing-core",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "tracing-log"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -275,6 +288,16 @@ dependencies = [
  "log",
  "once_cell",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-panic"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7bf1298a179837099f9309243af3b554e840f7f67f65e9f55294913299bd4cc5"
+dependencies = [
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
