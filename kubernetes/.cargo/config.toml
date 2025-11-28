@@ -1,8 +1,0 @@
-[env]
-RUST_BACKTRACE = "full"
-
-[target.'cfg(any())']
-rustflags = [
-    # This suppresses warnings about russh future incompatibility.
-    "-Afuture-incompatible",
-]

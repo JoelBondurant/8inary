@@ -42,7 +42,7 @@ impl SetupStep for Sysctl {
 		.join("\n")
 			+ "\n";
 		sudo::escalate_if_needed().expect("Failed to escalate privileges");
-		fs::write(Sysctl::CONFIG_PATH, config_txt).unwrap();
+		fs::write(Sysctl::CONFIG_PATH, config_txt).expect("Fatal failure to write sysctl config.");
 		Command::new("sysctl")
 			.arg("--system")
 			.status()

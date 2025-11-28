@@ -1,6 +1,7 @@
+use crate::setup::pkg;
 use crate::setup::SetupStep;
 use std::{fs, path::Path, process::Command};
-use tracing::{error, info};
+use tracing::info;
 
 pub struct Containerd;
 
@@ -15,21 +16,8 @@ impl SetupStep for Containerd {
 
 	fn check(&self) -> bool {
 		info!("Check if containerd is installed.");
-		let output = match Command::new("dpkg-query")
-			.args(["-W", "-f=${Status}", "containerd"])
-			.output()
-		{
-			Ok(output) => output,
-			Err(err) => {
-				error!("Failed to run dpkg-query: {err}.");
-				return false;
-			}
-		};
-		let Ok(stdout) = String::from_utf8(output.stdout) else {
-			error!("dpkg-query returned non-utf-8 output.");
-			return false;
-		};
-		if !output.status.success() || stdout.trim() != "install ok installed" {
+		let is_installed = pkg::is_installed("containerd");
+		if !is_installed {
 			info!("Containerd is not installed.");
 			return false;
 		}
@@ -59,8 +47,7 @@ impl SetupStep for Containerd {
 			.status()
 			.expect("Fatal apt-get failure.");
 		if !status.success() {
-			error!("Failed to install containerd: {status}.");
-			return;
+			panic!("Fatal failure to install containerd: {status}.");
 		}
 		fs::create_dir_all("/etc/containerd").expect("Failed to create /etc/containerd");
 		let config_path = Path::new(Containerd::CONFIG_PATH);
