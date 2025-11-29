@@ -6,6 +6,7 @@ use tracing::info;
 pub struct Containerd;
 
 impl Containerd {
+	pub const PACKAGE_NAME: &str = "containerd";
 	pub const CONFIG_PATH: &str = "/etc/containerd/config.toml";
 }
 
@@ -16,7 +17,7 @@ impl SetupStep for Containerd {
 
 	fn check(&self) -> bool {
 		info!("Check if containerd is installed.");
-		let is_installed = pkg::is_installed("containerd");
+		let is_installed = pkg::is_installed(Containerd::PACKAGE_NAME);
 		if !is_installed {
 			info!("Containerd is not installed.");
 			return false;
@@ -27,7 +28,7 @@ impl SetupStep for Containerd {
 			return false;
 		}
 		let is_active = Command::new("systemctl")
-			.args(["is-active", "--quiet", "containerd"])
+			.args(["is-active", "--quiet", Containerd::PACKAGE_NAME])
 			.status()
 			.is_ok_and(|s| s.success());
 		if !is_active {
@@ -42,18 +43,12 @@ impl SetupStep for Containerd {
 	fn set(&self) {
 		info!("Installing containerd via apt-get.");
 		sudo::escalate_if_needed().expect("Failed to escalate privileges.");
-		let status = Command::new("apt-get")
-			.args(["install", "-y", "--no-install-recommends", "containerd"])
-			.status()
-			.expect("Fatal apt-get failure.");
-		if !status.success() {
-			panic!("Fatal failure to install containerd: {status}.");
-		}
+		pkg::apt_install(&[Containerd::PACKAGE_NAME]);
 		fs::create_dir_all("/etc/containerd").expect("Failed to create /etc/containerd");
 		let config_path = Path::new(Containerd::CONFIG_PATH);
 		if !config_path.exists() || fs::read(config_path).unwrap().is_empty() {
 			info!("Generating default containerd config.");
-			let default_config = Command::new("containerd")
+			let default_config = Command::new(Containerd::PACKAGE_NAME)
 				.arg("config")
 				.arg("default")
 				.output()
@@ -65,7 +60,7 @@ impl SetupStep for Containerd {
 		}
 		info!("Restarting containerd service.");
 		Command::new("systemctl")
-			.args(["restart", "containerd"])
+			.args(["restart", Containerd::PACKAGE_NAME])
 			.status()
 			.expect("Fatal failure to restart containerd.");
 		info!("Containerd successfully installed.");

@@ -9,6 +9,7 @@ impl Kubes {
 	pub const PACKAGE_NAMES: &[&str] = &["kubelet", "kubeadm", "kubectl"];
 	pub const APT_CONFIG_PATH: &str = "/etc/apt/sources.list.d/kubernetes.list";
 	pub const APT_KEY_PATH: &str = "/etc/apt/keyrings/kubernetes-apt-keyring.gpg";
+	pub const K8S_VERSION: &str = "v1.34";
 	pub const K8S_BASE_URL: &str = "https://pkgs.k8s.io/core:/stable:/v1.34/deb";
 }
 

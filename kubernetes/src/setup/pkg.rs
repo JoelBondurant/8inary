@@ -36,3 +36,13 @@ pub fn apt_mark(package_names: &[&str]) {
 		.status()
 		.expect("Fatal apt-mark failure.");
 }
+
+/*
+pub fn snap_install(package_names: &[&str]) {
+	let args = ["install", "-y", "--no-install-recommends"];
+	Command::new("snap")
+		.args(args.iter().chain(package_names.iter()))
+		.status()
+		.expect("Fatal snap install failure.");
+}
+*/
