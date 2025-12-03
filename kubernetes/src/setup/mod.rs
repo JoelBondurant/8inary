@@ -3,6 +3,7 @@ mod control_plane;
 mod disable_swap;
 mod kernel_modules;
 mod kubes;
+mod machines;
 mod pkg;
 mod sysctl;
 

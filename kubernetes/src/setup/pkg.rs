@@ -39,7 +39,7 @@ pub fn apt_mark(package_names: &[&str]) {
 
 /*
 pub fn snap_install(package_names: &[&str]) {
-	let args = ["install", "-y", "--no-install-recommends"];
+	let args = ["install", "--classic"];
 	Command::new("snap")
 		.args(args.iter().chain(package_names.iter()))
 		.status()
