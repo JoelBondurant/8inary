@@ -59,7 +59,6 @@ impl SetupStep for DisableSwap {
 		};
 		if final_content.as_bytes() != original.as_bytes() {
 			info!("Removing swap entries from /etc/fstab.");
-			sudo::escalate_if_needed().expect("Failed to escalate privileges.");
 			fs::write(config_path, final_content).expect("Fatal fstab write failure.");
 		}
 	}

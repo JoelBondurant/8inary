@@ -42,7 +42,6 @@ impl SetupStep for Containerd {
 
 	fn set(&self) {
 		info!("Installing containerd via apt-get.");
-		sudo::escalate_if_needed().expect("Failed to escalate privileges.");
 		pkg::apt_install(&[Containerd::PACKAGE_NAME]);
 		fs::create_dir_all("/etc/containerd").expect("Failed to create /etc/containerd");
 		let config_path = Path::new(Containerd::CONFIG_PATH);

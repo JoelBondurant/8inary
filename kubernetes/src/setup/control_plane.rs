@@ -1,23 +1,23 @@
+use crate::context;
 use crate::setup::kubes;
 use crate::setup::machines;
 use crate::setup::SetupStep;
-use std::thread::sleep;
-use std::time::Duration;
-use std::{fs, process::Command};
+use std::{fs, process::Command, thread::sleep, time::Duration};
 use tracing::info;
 
 pub struct ControlPlane;
 
 impl ControlPlane {
-	pub const POD_CIDR: &str = "10.0.0.1/16";
-	pub const NETWORK_INTERFACE: &str = "wlo1";
+	pub const CILIUM_CLI_VERSION: &str = "v0.18.9";
+	pub const CILIUM_VERSION: &str = "v1.18.4";
+	pub const KUBE_VIP: &str = "192.168.0.2";
 	pub const KUBE_VIP_CONTAINER: &str = "ghcr.io/kube-vip/kube-vip";
-	pub const KUBE_VIP_VERSION: &str = "v1.0.2";
-	pub const CILIUM_VERSION: &str = "v0.18.8";
 	pub const KUBE_VIP_CONTAINER_HASH: &str =
 		"f86c774c4c0dcab81e56e3bdb42a5a6105c324767cfbc3a44df044f8a2666f8e";
-	pub const KUBE_VIP: &str = "192.168.0.2";
 	pub const KUBE_VIP_PORT: &str = "6443";
+	pub const KUBE_VIP_VERSION: &str = "v1.0.2";
+	pub const NETWORK_INTERFACE: &str = "wlo1";
+	pub const POD_CIDR: &str = "10.0.0.0/16";
 }
 
 impl SetupStep for ControlPlane {
@@ -47,7 +47,8 @@ impl SetupStep for ControlPlane {
 			return;
 		}
 		info!("Pulling kube-vip container.");
-		sudo::escalate_if_needed().expect("Failed to escalate privileges.");
+		let home = &context::get().home;
+		let user = &context::get().user;
 		Command::new("ctr")
 			.arg("image")
 			.arg("pull")
@@ -74,12 +75,35 @@ impl SetupStep for ControlPlane {
 				sudo install -m 0755 cilium /usr/local/bin/cilium
 				rm -f cilium-linux-amd64.tar.gz*
 			"#
-			, ControlPlane::CILIUM_VERSION))
+			, ControlPlane::CILIUM_CLI_VERSION))
 			.status()
 			.expect("Fatal Cilium install failure.");
 		info!("Cilium is installed.");
 		if this_machine.role == machines::MachineRole::ControlPlaneRoot {
 			info!("Bootstrapping control plane root node.");
+			info!("Hard reset Kubernetes node.");
+			Command::new("sh")
+				.arg("-c")
+				.arg(
+					r#"
+					set -euo pipefail
+					sudo kubeadm reset --force || true
+					sudo rm -rf /etc/kubernetes/
+					sudo rm -rf /var/lib/kubelet/
+					sudo rm -rf /var/lib/etcd/
+					sudo rm -rf /opt/cni/
+					sudo mkdir -p /etc/kubernetes/manifests/
+					sudo mkdir /var/lib/kubelet/
+					sudo mkdir /var/lib/etcd/
+					sudo mkdir /opt/cni/
+					sudo iptables -X || true
+					sudo systemctl restart containerd || true
+					sudo systemctl start kubelet || true
+				"#,
+				)
+				.status()
+				.expect("Fatal Kubernetes reset/cleanup failure.");
+			info!("Node has been hard reset.");
 			info!("Bootstrapping kube-vip config.");
 			let kube_vip_config_out = Command::new("ctr")
 				.arg("run")
@@ -127,22 +151,69 @@ impl SetupStep for ControlPlane {
 				.arg("--apiserver-advertise-address")
 				.arg(ControlPlane::KUBE_VIP)
 				.arg("--apiserver-cert-extra-sans")
-				.arg(ControlPlane::KUBE_VIP)
+				.arg(format!("{},127.0.0.1,localhost", ControlPlane::KUBE_VIP))
 				.arg("--kubernetes-version")
 				.arg(kubes::Kubes::K8S_VERSION)
 				.arg("--ignore-preflight-errors=NumCPU,Mem")
 				.arg("--skip-phases=addon/kube-proxy")
 				.status()
 				.expect("Fatal kubeadm init failure.");
+			info!("Kubeadm initalized.");
+			sleep(Duration::from_secs(2));
+			info!("Setting cluster trust using embedded CA data.");
+			Command::new("bash")
+				.arg("-c")
+				.arg(format!(
+					r#"
+					kubectl config set-cluster kubernetes \
+						--certificate-authority=<(sudo cat /etc/kubernetes/pki/ca.crt) \
+						--embed-certs=true \
+						--server=https://{}:{}
+				"#,
+					ControlPlane::KUBE_VIP,
+					ControlPlane::KUBE_VIP_PORT,
+				))
+				.status()
+				.expect("Fatal failure setting cluster trust configuration.");
+			sleep(Duration::from_secs(2));
+			Command::new("sh")
+				.arg("-c")
+				.arg(format!(
+					r#"
+					mkdir -p {}/.kube
+					sudo cp -f /etc/kubernetes/admin.conf {}/.kube/config
+					sudo chown {}:{} {}/.kube/config
+				"#,
+					home, home, user, user, home
+				))
+				.status()
+				.expect("Fatal failure to setup Kubeconfig.");
+			info!("Kubeconfig set for current user.");
+			sleep(Duration::from_secs(2));
+			info!("Cilium installing.");
 			Command::new("cilium")
+				.env("KUBECONFIG", format!("{}/.kube/config", home))
 				.arg("install")
 				.arg("--version")
 				.arg(ControlPlane::CILIUM_VERSION)
 				.arg("--set")
-				.arg("kubeProxyReplacement=strict")
+				.arg("kubeProxyReplacement=true")
 				.arg("--set")
-				.arg(format!(r#"k8s.cluster.cidr="{}""#, ControlPlane::POD_CIDR))
-				.arg("--wait");
+				.arg(format!(r#"cluster-pool.cidr="{}""#, ControlPlane::POD_CIDR))
+				.arg("--set")
+				.arg("hubble.enabled=true")
+				.arg("--set")
+				.arg("hubble.relay.enabled=true")
+				.arg("--set")
+				.arg("hubble.ui.enabled=true")
+				.arg("--set")
+				.arg("tls.ca.enabled=true")
+				.arg("--set")
+				.arg("tls.ca.manage=true")
+				.arg("--wait")
+				.status()
+				.expect("Fatal failure to install Cilium.");
+			info!("Cilium installed.");
 		}
 		if this_machine.role == machines::MachineRole::ControlPlane {
 			info!("Joining additional control plane node.");
@@ -195,7 +266,7 @@ impl SetupStep for ControlPlane {
 				.arg("--apiserver-advertise-address")
 				.arg("$NODE_IP")
 				.arg("--apiserver-cert-extra-sans")
-				.arg(ControlPlane::KUBE_VIP)
+				.arg(format!("{},127.0.0.1,localhost", ControlPlane::KUBE_VIP))
 				.status()
 				.expect("Fatal kubeadm init failure.");
 		}

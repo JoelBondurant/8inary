@@ -55,7 +55,6 @@ impl SetupStep for KernelModules {
 	fn set(&self) {
 		info!("Configuring kernel modules.");
 		let config_txt = "overlay\nbr_netfilter\n";
-		sudo::escalate_if_needed().expect("Failed to escalate privileges.");
 		fs::write(KernelModules::CONFIG_PATH, config_txt).unwrap();
 		KernelModules::load("overlay");
 		KernelModules::load("br_netfilter");

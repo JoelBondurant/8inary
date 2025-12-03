@@ -33,7 +33,6 @@ impl SetupStep for Kubes {
 
 	fn set(&self) {
 		info!("Installing Kubernetes tooling via apt-get.");
-		sudo::escalate_if_needed().expect("Failed to escalate privileges.");
 		let key_command = format!(
 			"curl -fsSL {}/Release.key | gpg --dearmor --yes -o {}",
 			Kubes::K8S_BASE_URL,
