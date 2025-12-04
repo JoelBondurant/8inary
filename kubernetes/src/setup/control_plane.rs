@@ -2,7 +2,13 @@ use crate::context;
 use crate::setup::kubes;
 use crate::setup::machines;
 use crate::setup::SetupStep;
-use std::{fs, process::Command, thread::sleep, time::Duration};
+use std::{
+	fs,
+	io::Write,
+	process::{Command, Stdio},
+	thread::sleep,
+	time::Duration,
+};
 use tracing::info;
 
 pub struct ControlPlane;
@@ -46,14 +52,36 @@ impl SetupStep for ControlPlane {
 				info!("This machine is a worker, skipping control plane setup.");
 			}
 			machines::MachineRole::ControlPlaneRoot => {
+				setup_control_plane_base();
 				setup_control_plane_root();
 			}
 			machines::MachineRole::ControlPlane => {
+				setup_control_plane_base();
 				setup_control_plane();
 			}
 		}
 		info!("Control plane setup finished.");
 	}
+}
+
+fn setup_control_plane_base() {
+	info!("Opening Kubernetes ports.");
+	Command::new("sh")
+		.arg("-c")
+		.arg(
+			r#"
+			sudo ufw allow from 192.168.0.0/16 to any port 6443 proto tcp comment 'kube-apiserver'
+			sudo ufw allow from 192.168.0.0/16 to any port 2379 proto tcp comment 'etcd client'
+			sudo ufw allow from 192.168.0.0/16 to any port 2380 proto tcp comment 'etcd peer'
+			sudo ufw allow from 192.168.0.0/16 to any port 10250 proto tcp comment 'kubelet'
+			sudo ufw allow from 192.168.0.0/16 to any port 10257 proto tcp comment 'controller-manager'
+			sudo ufw allow from 192.168.0.0/16 to any port 10259 proto tcp comment 'scheduler'
+			sudo ufw reload
+		"#,
+		)
+		.status()
+		.expect("Fatal failure in port opening.");
+	info!("Kubernetes ports are open.");
 }
 
 fn setup_control_plane_root() {
@@ -89,12 +117,13 @@ fn setup_control_plane_root() {
 		.status()
 		.expect("Fatal Cilium install failure.");
 	info!("Cilium is installed.");
-	info!("Hard reset Kubernetes node.");
+	info!("Hard reset Kubernetes control plane root node.");
 	Command::new("sh")
 		.arg("-c")
 		.arg(
 			r#"
 			set -euo pipefail
+			sudo systemctl stop kubelet || true
 			sudo kubeadm reset --force || true
 			sudo rm -rf /etc/kubernetes/
 			sudo rm -rf /var/lib/kubelet/
@@ -226,26 +255,97 @@ fn setup_control_plane_root() {
 	info!("Cilium installed.");
 }
 
+fn get_control_plane_join_command() -> String {
+	let home = &context::get().home;
+	let mut child = Command::new("ssh")
+		.args(["-o", "LogLevel=ERROR"])
+		.args(["-i", &format!("{}/.ssh/id_ed25519", home)])
+		.arg(format!("mgmt@{}", ControlPlane::KUBE_VIP))
+		.arg("bash")
+		.arg("-s")
+		.stdin(Stdio::piped())
+		.stdout(Stdio::piped())
+		.stderr(Stdio::piped())
+		.spawn()
+		.expect("Failed to spawn ssh to first control-plane node.");
+	if let Some(mut stdin) = child.stdin.take() {
+		stdin
+			.write_all(
+				br#"
+				set -e
+				sudo -n bash -c '
+					export KUBECONFIG=/etc/kubernetes/admin.conf
+					K8S_CERT_KEY=$(kubeadm init phase upload-certs --upload-certs | tail -1 | tr -d "\n")
+					kubeadm token create --print-join-command --certificate-key $K8S_CERT_KEY
+				'
+			"#,
+			)
+			.expect("Failed to write script to ssh stdin.");
+	}
+	let output = child
+		.wait_with_output()
+		.expect("Fatal join command build failure.");
+	if !output.status.success() {
+		let stderr = String::from_utf8_lossy(&output.stderr);
+		panic!(
+			"Failed to get join command from first node. Stderr: {}",
+			stderr
+		);
+	}
+	let join_cmd = String::from_utf8(output.stdout)
+		.expect("Join command contains invalid UTF-8.")
+		.trim()
+		.to_string();
+	if join_cmd.is_empty() || !join_cmd.contains("--control-plane") {
+		panic!("Received empty or invalid join command: {join_cmd:?}");
+	}
+	info!("Successfully obtained fresh control-plane join command.");
+	join_cmd + " --v=5"
+}
+
 fn setup_control_plane() {
 	info!("Joining additional control plane node.");
-	info!("Kubeadm init.");
-	Command::new("kubeadm")
-		.arg("join")
-		.arg(format!(
-			"{}:{}",
-			ControlPlane::KUBE_VIP,
-			ControlPlane::KUBE_VIP_PORT,
-		))
-		.arg("--token")
-		.arg("--discovery-token-ca-cert-hash")
-		.arg("sha256:<HASH_FROM_INIT>") //????
-		.arg("--control-plane")
-		.arg("--certificate-key")
-		.arg("<CERT_KEY_FROM_INIT>") // WTF????
-		.arg("--apiserver-advertise-address")
-		.arg("$NODE_IP")
-		.arg("--apiserver-cert-extra-sans")
-		.arg(format!("{},127.0.0.1,localhost", ControlPlane::KUBE_VIP))
+	info!("Hard reset Kubernetes control plane node.");
+	Command::new("sh")
+		.arg("-c")
+		.arg(
+			r#"
+			set -euo pipefail
+			sudo systemctl stop kubelet || true
+			sudo rm /etc/kubernetes/manifests/kube-apiserver.yaml || true
+			sudo rm /etc/kubernetes/manifests/kube-controller-manager.yaml || true
+			sudo rm /etc/kubernetes/manifests/kube-scheduler.yaml || true
+			sudo rm /etc/kubernetes/manifests/etcd.yaml || true
+			sudo rm -rf /etc/kubernetes/pki || true
+			sudo rm -rf /etc/kubernetes/tmp || true
+			sudo systemctl start kubelet || true
+		"#,
+		)
 		.status()
-		.expect("Fatal kubeadm init failure.");
+		.expect("Fatal Kubernetes reset/cleanup failure.");
+	info!("Node has been hard reset.");
+	let join_command = get_control_plane_join_command();
+	info!("Executing join command:\n{join_command}\n");
+	Command::new("bash")
+		.arg("-c")
+		.arg(join_command)
+		.status()
+		.expect("Fatal failure in control plane join command.");
+	info!("This node has joined the control plane.");
+	sleep(Duration::from_secs(2));
+	let home = &context::get().home;
+	let user = &context::get().user;
+	Command::new("sh")
+		.arg("-c")
+		.arg(format!(
+			r#"
+			mkdir -p {}/.kube
+			sudo cp -f /etc/kubernetes/admin.conf {}/.kube/config
+			sudo chown {}:{} {}/.kube/config
+		"#,
+			home, home, user, user, home
+		))
+		.status()
+		.expect("Fatal failure to setup Kubeconfig.");
+	info!("Kubeconfig set for current user.");
 }
