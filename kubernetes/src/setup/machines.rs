@@ -55,8 +55,8 @@ const INVENTORY: &[IMachine<'static>] = &[
 ];
 
 pub fn this() -> Machine {
-	let machine_id = String::from_utf8(fs::read("/etc/machine-id").expect("No machine-id"))
-		.expect("Machine-id is not utf-8.")
+	let machine_id = fs::read_to_string("/etc/machine-id")
+		.expect("No machine-id")
 		.trim()
 		.to_string();
 	let this_imachine = INVENTORY
