@@ -41,46 +41,16 @@ impl SetupStep for ControlPlane {
 
 	fn set(&self) {
 		info!("ControlPlane setup started.");
-		let this_machine = machines::this();
-		if this_machine.role == machines::MachineRole::Worker {
-			info!("This machine is a worker, skipping control plane setup.");
-			return;
-		}
-		info!("Pulling kube-vip container.");
-		Command::new("ctr")
-			.arg("image")
-			.arg("pull")
-			.arg(format!(
-				"{}:{}@sha256:{}",
-				ControlPlane::KUBE_VIP_CONTAINER,
-				ControlPlane::KUBE_VIP_VERSION,
-				ControlPlane::KUBE_VIP_CONTAINER_HASH,
-			))
-			.status()
-			.expect("Fatal failure to pull kube-vip container.");
-		info!("Installing cilium cluster mesh.");
-		Command::new("sh")
-			.arg("-c")
-			.arg(format!(
-				r#"
-				set -euo pipefail
-				cd /tmp
-				BASE="https://github.com/cilium/cilium-cli/releases/download/{}"
-				curl -fsSL --location "$BASE/cilium-linux-amd64.tar.gz" -o cilium-linux-amd64.tar.gz
-				curl -fsSL --location "$BASE/cilium-linux-amd64.tar.gz.sha256sum" -o cilium-linux-amd64.tar.gz.sha256sum
-				sha256sum --check cilium-linux-amd64.tar.gz.sha256sum
-				tar xzf cilium-linux-amd64.tar.gz cilium
-				sudo install -m 0755 cilium /usr/local/bin/cilium
-				rm -f cilium-linux-amd64.tar.gz*
-			"#
-			, ControlPlane::CILIUM_CLI_VERSION))
-			.status()
-			.expect("Fatal Cilium install failure.");
-		info!("Cilium is installed.");
-		if this_machine.role == machines::MachineRole::ControlPlaneRoot {
-			setup_control_plane_root();
-		} else if this_machine.role == machines::MachineRole::ControlPlane {
-			setup_control_plane();
+		match machines::this().role {
+			machines::MachineRole::Worker => {
+				info!("This machine is a worker, skipping control plane setup.");
+			}
+			machines::MachineRole::ControlPlaneRoot => {
+				setup_control_plane_root();
+			}
+			machines::MachineRole::ControlPlane => {
+				setup_control_plane();
+			}
 		}
 		info!("Control plane setup finished.");
 	}
@@ -88,6 +58,37 @@ impl SetupStep for ControlPlane {
 
 fn setup_control_plane_root() {
 	info!("Bootstrapping control plane root node.");
+	info!("Pulling kube-vip container.");
+	Command::new("ctr")
+		.arg("image")
+		.arg("pull")
+		.arg(format!(
+			"{}:{}@sha256:{}",
+			ControlPlane::KUBE_VIP_CONTAINER,
+			ControlPlane::KUBE_VIP_VERSION,
+			ControlPlane::KUBE_VIP_CONTAINER_HASH,
+		))
+		.status()
+		.expect("Fatal failure to pull kube-vip container.");
+	info!("Installing cilium cluster mesh.");
+	Command::new("sh")
+		.arg("-c")
+		.arg(format!(
+			r#"
+			set -euo pipefail
+			cd /tmp
+			BASE="https://github.com/cilium/cilium-cli/releases/download/{}"
+			curl -fsSL --location "$BASE/cilium-linux-amd64.tar.gz" -o cilium-linux-amd64.tar.gz
+			curl -fsSL --location "$BASE/cilium-linux-amd64.tar.gz.sha256sum" -o cilium-linux-amd64.tar.gz.sha256sum
+			sha256sum --check cilium-linux-amd64.tar.gz.sha256sum
+			tar xzf cilium-linux-amd64.tar.gz cilium
+			sudo install -m 0755 cilium /usr/local/bin/cilium
+			rm -f cilium-linux-amd64.tar.gz*
+		"#
+		, ControlPlane::CILIUM_CLI_VERSION))
+		.status()
+		.expect("Fatal Cilium install failure.");
+	info!("Cilium is installed.");
 	info!("Hard reset Kubernetes node.");
 	Command::new("sh")
 		.arg("-c")
@@ -227,38 +228,6 @@ fn setup_control_plane_root() {
 
 fn setup_control_plane() {
 	info!("Joining additional control plane node.");
-	info!("Bootstrapping kube-vip config.");
-	let kube_vip_config_out = Command::new("ctr")
-		.arg("run")
-		.arg("--rm")
-		.arg("--net-host")
-		.arg("--mount")
-		.arg("type=bind,src=/etc/kubernetes/manifests,dst=/etc/kubernetes/manifests")
-		.arg(format!(
-			"{}:{}",
-			ControlPlane::KUBE_VIP_CONTAINER,
-			ControlPlane::KUBE_VIP_VERSION,
-		))
-		.arg("kube-vip")
-		.arg("manifest")
-		.arg("pod")
-		.arg("--vip")
-		.arg(ControlPlane::KUBE_VIP)
-		.arg("--interface")
-		.arg(ControlPlane::NETWORK_INTERFACE)
-		.arg("--arp")
-		.arg("--controlplane")
-		.arg("--leaderElection")
-		.output()
-		.expect("Fatal failure to run kube-vip.");
-	let kube_vip_config = String::from_utf8(kube_vip_config_out.stdout)
-		.expect("kube-vip manifest returned non-utf-8 output.");
-	let kube_vip_config_path = "/etc/kubernetes/manifests/kube-vip.yaml";
-	fs::write(kube_vip_config_path, kube_vip_config)
-		.expect("Fatal failure to write kube-vip config.");
-	info!("Sleeping for kube-vip to bootstrap.");
-	sleep(Duration::from_secs(8));
-	info!("Kube-vip config written.");
 	info!("Kubeadm init.");
 	Command::new("kubeadm")
 		.arg("join")
