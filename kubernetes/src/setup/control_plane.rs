@@ -312,12 +312,14 @@ fn setup_control_plane() {
 			r#"
 			set -euo pipefail
 			sudo systemctl stop kubelet || true
+			sudo kubeadm reset --force || true
 			sudo rm /etc/kubernetes/manifests/kube-apiserver.yaml || true
 			sudo rm /etc/kubernetes/manifests/kube-controller-manager.yaml || true
 			sudo rm /etc/kubernetes/manifests/kube-scheduler.yaml || true
 			sudo rm /etc/kubernetes/manifests/etcd.yaml || true
 			sudo rm -rf /etc/kubernetes/pki || true
 			sudo rm -rf /etc/kubernetes/tmp || true
+			sudo systemctl restart containerd || true
 			sudo systemctl start kubelet || true
 		"#,
 		)
