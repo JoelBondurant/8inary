@@ -33,16 +33,30 @@ impl SetupStep for ControlPlane {
 
 	fn check(&self) -> bool {
 		info!("Checking ControlPlane setup.");
-		let this_machine = machines::this();
-		if this_machine.role == machines::MachineRole::Worker {
-			info!(
-				"This machine #{} is a worker, no control plane setup required.",
-				this_machine.id
-			);
-			return true;
+		match machines::this().role {
+			machines::MachineRole::Worker => {
+				info!("This machine is a worker, no control plane setup required.");
+				return true;
+			}
+			machines::MachineRole::ControlPlaneRoot | machines::MachineRole::ControlPlane => {}
 		}
-		info!("ControlPlane is not set up.");
-		false
+		let is_setup = str::from_utf8(
+			&Command::new("kubectl")
+				.args(["get", "node", "slim", "--show-labels"])
+				.output()
+				.expect("Fatal failure resolving control plane status.")
+				.stdout,
+		)
+		.expect("")
+		.trim()
+		.contains("node-role.kubernetes.io/control-plane=");
+		if is_setup {
+			info!("ControlPlane is already set up.");
+			true
+		} else {
+			info!("ControlPlane is not set up.");
+			false
+		}
 	}
 
 	fn set(&self) {
@@ -52,19 +66,21 @@ impl SetupStep for ControlPlane {
 				info!("This machine is a worker, skipping control plane setup.");
 			}
 			machines::MachineRole::ControlPlaneRoot => {
-				setup_control_plane_base();
+				setup_control_plane_pre();
 				setup_control_plane_root();
+				setup_control_plane_post();
 			}
 			machines::MachineRole::ControlPlane => {
-				setup_control_plane_base();
+				setup_control_plane_pre();
 				setup_control_plane();
+				setup_control_plane_post();
 			}
 		}
 		info!("Control plane setup finished.");
 	}
 }
 
-fn setup_control_plane_base() {
+fn setup_control_plane_pre() {
 	info!("Opening Kubernetes ports.");
 	Command::new("sh")
 		.arg("-c")
@@ -82,6 +98,21 @@ fn setup_control_plane_base() {
 		.status()
 		.expect("Fatal failure in port opening.");
 	info!("Kubernetes ports are open.");
+}
+
+fn setup_control_plane_post() {
+	info!("Removing NoSchedule taint for control plane worker mode.");
+	sleep(Duration::from_secs(4));
+	Command::new("kubectl")
+		.args([
+			"taint",
+			"nodes",
+			&context::get().hostname,
+			"node-role.kubernetes.io/control-plane:NoSchedule-",
+		])
+		.status()
+		.expect("Fatal failure in NoSchedule taint removal.");
+	info!("NoSchedule taint removed.");
 }
 
 fn setup_control_plane_root() {
