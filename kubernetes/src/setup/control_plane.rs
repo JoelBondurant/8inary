@@ -178,8 +178,10 @@ fn setup_control_plane_root() {
 		.arg("run")
 		.arg("--rm")
 		.arg("--net-host")
-		.arg("--mount")
-		.arg("type=bind,src=/etc/kubernetes/manifests,dst=/etc/kubernetes/manifests")
+		.args([
+			"--mount",
+			"type=bind,src=/etc/kubernetes/manifests,dst=/etc/kubernetes/manifests,options=rbind:rw"
+		])
 		.arg(format!(
 			"{}:{}",
 			ControlPlane::KUBE_VIP_CONTAINER,
@@ -188,10 +190,8 @@ fn setup_control_plane_root() {
 		.arg("kube-vip")
 		.arg("manifest")
 		.arg("pod")
-		.arg("--vip")
-		.arg(ControlPlane::KUBE_VIP)
-		.arg("--interface")
-		.arg(ControlPlane::NETWORK_INTERFACE)
+		.args(["--vip", ControlPlane::KUBE_VIP])
+		.args(["--interface", ControlPlane::NETWORK_INTERFACE])
 		.arg("--arp")
 		.arg("--controlplane")
 		.arg("--leaderElection")
@@ -208,21 +208,19 @@ fn setup_control_plane_root() {
 	info!("Kubeadm init.");
 	Command::new("kubeadm")
 		.arg("init")
-		.arg("--control-plane-endpoint")
-		.arg(format!(
-			"{}:{}",
-			ControlPlane::KUBE_VIP,
-			ControlPlane::KUBE_VIP_PORT,
-		))
+		.args([
+			"--control-plane-endpoint",
+			&format!("{}:{}", ControlPlane::KUBE_VIP, ControlPlane::KUBE_VIP_PORT,),
+		])
 		.arg("--upload-certs")
-		.arg("--pod-network-cidr")
-		.arg(ControlPlane::POD_CIDR)
-		.arg("--apiserver-advertise-address")
-		.arg(ControlPlane::KUBE_VIP)
-		.arg("--apiserver-cert-extra-sans")
-		.arg(format!("{},127.0.0.1,localhost", ControlPlane::KUBE_VIP))
-		.arg("--kubernetes-version")
-		.arg(kubes::Kubes::K8S_VERSION)
+		.args(["--pod-network-cidr", ControlPlane::POD_CIDR])
+		.args(["--apiserver-advertise-address", ControlPlane::KUBE_VIP])
+		.args([
+			"--apiserver-cert-extra-sans",
+			&format!("{},127.0.0.1,localhost", ControlPlane::KUBE_VIP),
+		])
+		.args(["--kubernetes-version", kubes::Kubes::K8S_VERSION])
+		.arg("--feature-gates=UserNamespacesSupport=true")
 		.arg("--ignore-preflight-errors=NumCPU,Mem")
 		.arg("--skip-phases=addon/kube-proxy")
 		.status()
@@ -265,22 +263,17 @@ fn setup_control_plane_root() {
 	Command::new("cilium")
 		.env("KUBECONFIG", format!("{}/.kube/config", home))
 		.arg("install")
-		.arg("--version")
-		.arg(ControlPlane::CILIUM_VERSION)
-		.arg("--set")
-		.arg("kubeProxyReplacement=true")
-		.arg("--set")
-		.arg(format!(r#"cluster-pool.cidr="{}""#, ControlPlane::POD_CIDR))
-		.arg("--set")
-		.arg("hubble.enabled=true")
-		.arg("--set")
-		.arg("hubble.relay.enabled=true")
-		.arg("--set")
-		.arg("hubble.ui.enabled=true")
-		.arg("--set")
-		.arg("tls.ca.enabled=true")
-		.arg("--set")
-		.arg("tls.ca.manage=true")
+		.args(["--version", ControlPlane::CILIUM_VERSION])
+		.args(["--set", "kubeProxyReplacement=true"])
+		.args([
+			"--set",
+			&format!(r#"cluster-pool.cidr="{}""#, ControlPlane::POD_CIDR),
+		])
+		.args(["--set", "hubble.enabled=true"])
+		.args(["--set", "hubble.relay.enabled=true"])
+		.args(["--set", "hubble.ui.enabled=true"])
+		.args(["--set", "tls.ca.enabled=true"])
+		.args(["--set", "tls.ca.manage=true"])
 		.arg("--wait")
 		.status()
 		.expect("Fatal failure to install Cilium.");
