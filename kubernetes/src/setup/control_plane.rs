@@ -87,9 +87,10 @@ fn setup_control_plane_pre() {
 		.arg("-c")
 		.arg(
 			r#"
-			sudo ufw allow from 192.168.0.0/16 to any port 6443 proto tcp comment 'kube-apiserver'
 			sudo ufw allow from 192.168.0.0/16 to any port 2379 proto tcp comment 'etcd client'
 			sudo ufw allow from 192.168.0.0/16 to any port 2380 proto tcp comment 'etcd peer'
+			sudo ufw allow from 192.168.0.0/16 to any port 6443 proto tcp comment 'kube-apiserver'
+			sudo ufw allow from 192.168.0.0/16 to any port 8472 proto udp comment 'cilium vxlan'
 			sudo ufw allow from 192.168.0.0/16 to any port 10250 proto tcp comment 'kubelet'
 			sudo ufw allow from 192.168.0.0/16 to any port 10257 proto tcp comment 'controller-manager'
 			sudo ufw allow from 192.168.0.0/16 to any port 10259 proto tcp comment 'scheduler'
