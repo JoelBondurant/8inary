@@ -1,9 +1,10 @@
-use std::{env, process::Command, sync::OnceLock};
+use std::{env, fs, process::Command, sync::OnceLock};
 
 #[derive(Debug)]
 pub struct Context {
 	pub home: String,
 	pub hostname: String,
+	pub machine_id: String,
 	pub user: String,
 }
 
@@ -21,7 +22,7 @@ pub fn init() {
 	)
 	.expect("Fatal failure in home path non-utf8 encoding.")
 	.trim()
-	.to_string();
+	.to_owned();
 	let hostname = str::from_utf8(
 		&Command::new("hostname")
 			.arg("-f")
@@ -31,10 +32,15 @@ pub fn init() {
 	)
 	.expect("Fatal failure in hostname non-utf8 encoding.")
 	.trim()
-	.to_string();
+	.to_owned();
+	let machine_id = fs::read_to_string("/etc/machine-id")
+		.expect("Fatal failure to resolve machine-id.")
+		.trim()
+		.to_owned();
 	let context = Context {
 		home,
 		hostname,
+		machine_id,
 		user,
 	};
 	CONTEXT.set(context).expect("Fatal context initialization.");

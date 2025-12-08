@@ -61,6 +61,7 @@ impl SetupStep for ControlPlane {
 
 	fn set(&self) {
 		info!("ControlPlane setup started.");
+		info!("Machine Id: {}", machines::this().id);
 		match machines::this().role {
 			machines::MachineRole::Worker => {
 				info!("This machine is a worker, skipping control plane setup.");
@@ -326,7 +327,7 @@ fn get_control_plane_join_command() -> String {
 	let join_cmd = String::from_utf8(output.stdout)
 		.expect("Join command contains invalid UTF-8.")
 		.trim()
-		.to_string();
+		.to_owned();
 	if join_cmd.is_empty() || !join_cmd.contains("--control-plane") {
 		panic!("Received empty or invalid join command: {join_cmd:?}");
 	}

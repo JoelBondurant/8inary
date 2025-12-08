@@ -1,4 +1,4 @@
-use std::fs;
+use crate::context;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Environment {
@@ -7,8 +7,9 @@ pub enum Environment {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MachineRole {
-	ControlPlaneRoot,
 	ControlPlane,
+	ControlPlaneRoot,
+	#[allow(dead_code)]
 	Worker,
 }
 
@@ -55,16 +56,12 @@ const INVENTORY: &[IMachine<'static>] = &[
 ];
 
 pub fn this() -> Machine {
-	let machine_id = fs::read_to_string("/etc/machine-id")
-		.expect("No machine-id")
-		.trim()
-		.to_string();
 	let this_imachine = INVENTORY
 		.iter()
-		.find(|ma| ma.id == machine_id)
+		.find(|ma| ma.id == context::get().machine_id)
 		.expect("This machine is not in the inventory.");
 	Machine {
-		id: machine_id,
+		id: this_imachine.id.to_owned(),
 		_environment: this_imachine.environment,
 		role: this_imachine.role,
 	}
