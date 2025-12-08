@@ -16,7 +16,6 @@ impl SetupStep for Sysctl {
 	}
 
 	fn check(&self) -> bool {
-		info!("Check for sysctl configuration.");
 		const EXPECTED: [u8; 32] =
 			hex!("6e3f751b8409493b80fb7154ee21989dece3322d8b9018157ffef64dfbc10799");
 		let Ok(config_txt) = fs::read(Sysctl::CONFIG_PATH) else {

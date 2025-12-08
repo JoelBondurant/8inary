@@ -16,7 +16,6 @@ impl SetupStep for Containerd {
 	}
 
 	fn check(&self) -> bool {
-		info!("Check if containerd is installed.");
 		let is_installed = pkg::is_installed(Containerd::PACKAGE_NAME);
 		if !is_installed {
 			info!("Containerd is not installed.");

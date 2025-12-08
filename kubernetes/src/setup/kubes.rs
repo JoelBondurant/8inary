@@ -19,7 +19,6 @@ impl SetupStep for Kubes {
 	}
 
 	fn check(&self) -> bool {
-		info!("Check if Kubes are installed.");
 		for package_name in Kubes::PACKAGE_NAMES {
 			let is_installed = pkg::is_installed(package_name);
 			if !is_installed {

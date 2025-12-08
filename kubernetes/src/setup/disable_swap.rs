@@ -10,7 +10,6 @@ impl SetupStep for DisableSwap {
 	}
 
 	fn check(&self) -> bool {
-		info!("Check if swap is disabled.");
 		let is_swap_on = fs::read_to_string("/proc/swaps").unwrap().lines().count() > 1;
 		if is_swap_on {
 			info!("Swap is enabled.");

@@ -1,6 +1,7 @@
 mod containerd;
 mod control_plane;
 mod disable_swap;
+mod helm;
 mod kernel_modules;
 mod kubes;
 mod machines;
@@ -10,6 +11,7 @@ mod sysctl;
 use crate::setup::containerd::Containerd;
 use crate::setup::control_plane::ControlPlane;
 use crate::setup::disable_swap::DisableSwap;
+use crate::setup::helm::Helm;
 use crate::setup::kernel_modules::KernelModules;
 use crate::setup::kubes::Kubes;
 use crate::setup::sysctl::Sysctl;
@@ -29,6 +31,7 @@ pub fn setup() {
 		&Sysctl,
 		&Containerd,
 		&Kubes,
+		&Helm,
 		&ControlPlane,
 	];
 	for step in SETUP_STEPS {

@@ -32,7 +32,6 @@ impl SetupStep for ControlPlane {
 	}
 
 	fn check(&self) -> bool {
-		info!("Checking ControlPlane setup.");
 		match machines::this().role {
 			machines::MachineRole::Worker => {
 				info!("This machine is a worker, no control plane setup required.");
@@ -42,12 +41,13 @@ impl SetupStep for ControlPlane {
 		}
 		let is_setup = str::from_utf8(
 			&Command::new("kubectl")
-				.args(["get", "node", "slim", "--show-labels"])
+				.args(["--kubeconfig", "/etc/kubernetes/admin.conf"])
+				.args(["get", "node", &context::get().hostname, "--show-labels"])
 				.output()
 				.expect("Fatal failure resolving control plane status.")
 				.stdout,
 		)
-		.expect("")
+		.expect("Fatal failure to check control plane membership.")
 		.trim()
 		.contains("node-role.kubernetes.io/control-plane=");
 		if is_setup {

@@ -1,5 +1,4 @@
 use std::process::Command;
-use tracing::info;
 
 pub fn is_installed(package_name: &str) -> bool {
 	let output = Command::new("dpkg-query")
@@ -10,7 +9,6 @@ pub fn is_installed(package_name: &str) -> bool {
 		.expect("dpkg-query returned non-utf-8 output.")
 		.trim()
 		.to_owned();
-	info!("{package_name}: {stdout}");
 	output.status.success() && (stdout == "install ok installed" || stdout == "hold ok installed")
 }
 
@@ -36,13 +34,3 @@ pub fn apt_mark(package_names: &[&str]) {
 		.status()
 		.expect("Fatal apt-mark failure.");
 }
-
-/*
-pub fn snap_install(package_names: &[&str]) {
-	let args = ["install", "--classic"];
-	Command::new("snap")
-		.args(args.iter().chain(package_names.iter()))
-		.status()
-		.expect("Fatal snap install failure.");
-}
-*/

@@ -28,7 +28,6 @@ impl SetupStep for KernelModules {
 	}
 
 	fn check(&self) -> bool {
-		info!("Check for kernel modules.");
 		const EXPECTED: [u8; 32] =
 			hex!("fcaf07413a456d658640930cef56ed4d13330123e3b522c481021613c64755e3");
 		let Ok(config_txt) = fs::read(KernelModules::CONFIG_PATH) else {
