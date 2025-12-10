@@ -1,6 +1,5 @@
 use crate::context;
-use crate::setup::kubes;
-use crate::setup::machines;
+use crate::setup::utils::inventory;
 use crate::setup::SetupStep;
 use std::{
 	fs,
@@ -16,6 +15,7 @@ pub struct ControlPlane;
 impl ControlPlane {
 	pub const CILIUM_CLI_VERSION: &str = "v0.18.9";
 	pub const CILIUM_VERSION: &str = "v1.18.4";
+	pub const K8S_VERSION: &str = "v1.34.2";
 	pub const KUBE_VIP: &str = "192.168.0.2";
 	pub const KUBE_VIP_CONTAINER: &str = "ghcr.io/kube-vip/kube-vip";
 	pub const KUBE_VIP_CONTAINER_HASH: &str =
@@ -32,12 +32,12 @@ impl SetupStep for ControlPlane {
 	}
 
 	fn check(&self) -> bool {
-		match machines::this().role {
-			machines::MachineRole::Worker => {
+		match inventory::this().role {
+			inventory::MachineRole::Worker => {
 				info!("This machine is a worker, no control plane setup required.");
 				return true;
 			}
-			machines::MachineRole::ControlPlaneRoot | machines::MachineRole::ControlPlane => {}
+			inventory::MachineRole::ControlPlaneRoot | inventory::MachineRole::ControlPlane => {}
 		}
 		let is_setup = str::from_utf8(
 			&Command::new("kubectl")
@@ -61,17 +61,17 @@ impl SetupStep for ControlPlane {
 
 	fn set(&self) {
 		info!("ControlPlane setup started.");
-		info!("Machine Id: {}", machines::this().id);
-		match machines::this().role {
-			machines::MachineRole::Worker => {
+		info!("Machine Id: {}", inventory::this().id);
+		match inventory::this().role {
+			inventory::MachineRole::Worker => {
 				info!("This machine is a worker, skipping control plane setup.");
 			}
-			machines::MachineRole::ControlPlaneRoot => {
+			inventory::MachineRole::ControlPlaneRoot => {
 				setup_control_plane_pre();
 				setup_control_plane_root();
 				setup_control_plane_post();
 			}
-			machines::MachineRole::ControlPlane => {
+			inventory::MachineRole::ControlPlane => {
 				setup_control_plane_pre();
 				setup_control_plane();
 				setup_control_plane_post();
@@ -220,7 +220,7 @@ fn setup_control_plane_root() {
 			"--apiserver-cert-extra-sans",
 			&format!("{},127.0.0.1,localhost", ControlPlane::KUBE_VIP),
 		])
-		.args(["--kubernetes-version", kubes::Kubes::K8S_VERSION])
+		.args(["--kubernetes-version", ControlPlane::K8S_VERSION])
 		.arg("--feature-gates=UserNamespacesSupport=true")
 		.arg("--ignore-preflight-errors=NumCPU,Mem")
 		.arg("--skip-phases=addon/kube-proxy")

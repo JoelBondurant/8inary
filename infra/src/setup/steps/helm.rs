@@ -1,4 +1,4 @@
-use crate::setup::pkg;
+use crate::setup::utils::pkg;
 use crate::setup::SetupStep;
 use std::{fs, process::Command};
 use tracing::info;
@@ -30,7 +30,7 @@ impl SetupStep for Helm {
 
 	fn set(&self) {
 		info!("Installing Helm.");
-		pkg::apt_install(Helm::DEPENDENCIES);
+		pkg::install(Helm::DEPENDENCIES);
 		let key_command = format!(
 			"curl -fsSL {}/gpgkey | gpg --dearmor --yes -o {}",
 			Helm::BASE_KEY_URL,
@@ -47,9 +47,9 @@ impl SetupStep for Helm {
 			Helm::BASE_KEY_URL,
 		);
 		fs::write(Helm::APT_CONFIG_PATH, apt_config_txt).unwrap();
-		pkg::apt_update();
-		pkg::apt_install(&[Helm::PACKAGE_NAME]);
-		pkg::apt_mark(&[Helm::PACKAGE_NAME]);
+		pkg::update();
+		pkg::install(&[Helm::PACKAGE_NAME]);
+		pkg::mark(&[Helm::PACKAGE_NAME]);
 		info!("Helm has been installed.");
 	}
 }

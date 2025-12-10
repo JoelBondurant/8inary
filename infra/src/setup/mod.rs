@@ -1,22 +1,9 @@
-mod containerd;
-mod control_plane;
-mod disable_swap;
-mod helm;
-mod istio;
-mod kernel_modules;
-mod kubes;
-mod machines;
-mod pkg;
-mod sysctl;
+mod steps;
+mod utils;
 
-use crate::setup::containerd::Containerd;
-use crate::setup::control_plane::ControlPlane;
-use crate::setup::disable_swap::DisableSwap;
-use crate::setup::helm::Helm;
-use crate::setup::istio::Istio;
-use crate::setup::kernel_modules::KernelModules;
-use crate::setup::kubes::Kubes;
-use crate::setup::sysctl::Sysctl;
+use crate::setup::steps::{
+	Containerd, ControlPlane, DisableSwap, Helm, Istio, KernelModules, Kubes, Sysctl,
+};
 use tracing::info;
 
 pub trait SetupStep {

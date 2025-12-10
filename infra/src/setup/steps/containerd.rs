@@ -1,4 +1,4 @@
-use crate::setup::pkg;
+use crate::setup::utils::pkg;
 use crate::setup::SetupStep;
 use std::{fs, path::Path, process::Command};
 use tracing::info;
@@ -41,7 +41,7 @@ impl SetupStep for Containerd {
 
 	fn set(&self) {
 		info!("Installing containerd via apt-get.");
-		pkg::apt_install(&[Containerd::PACKAGE_NAME]);
+		pkg::install(&[Containerd::PACKAGE_NAME]);
 		fs::create_dir_all("/etc/containerd").expect("Failed to create /etc/containerd");
 		let config_path = Path::new(Containerd::CONFIG_PATH);
 		if !config_path.exists() || fs::read(config_path).unwrap().is_empty() {

@@ -1,4 +1,4 @@
-use crate::setup::pkg;
+use crate::setup::utils::pkg;
 use crate::setup::SetupStep;
 use std::{fs, process::Command};
 use tracing::info;
@@ -9,7 +9,6 @@ impl Kubes {
 	pub const PACKAGE_NAMES: &[&str] = &["kubelet", "kubeadm", "kubectl"];
 	pub const APT_CONFIG_PATH: &str = "/etc/apt/sources.list.d/kubernetes.list";
 	pub const APT_KEY_PATH: &str = "/etc/apt/keyrings/kubernetes-apt-keyring.gpg";
-	pub const K8S_VERSION: &str = "v1.34.2";
 	pub const K8S_BASE_URL: &str = "https://pkgs.k8s.io/core:/stable:/v1.34/deb";
 }
 
@@ -48,9 +47,9 @@ impl SetupStep for Kubes {
 			Kubes::K8S_BASE_URL,
 		);
 		fs::write(Kubes::APT_CONFIG_PATH, apt_config_txt).unwrap();
-		pkg::apt_update();
-		pkg::apt_install(Kubes::PACKAGE_NAMES);
-		pkg::apt_mark(Kubes::PACKAGE_NAMES);
+		pkg::update();
+		pkg::install(Kubes::PACKAGE_NAMES);
+		pkg::mark(Kubes::PACKAGE_NAMES);
 		info!("Kubernetes tooling installed.");
 	}
 }

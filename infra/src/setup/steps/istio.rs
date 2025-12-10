@@ -1,5 +1,5 @@
 use crate::setup::SetupStep;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use tracing::info;
 
 pub struct Istio;
@@ -16,7 +16,10 @@ impl SetupStep for Istio {
 
 	fn check(&self) -> bool {
 		let is_installed = Command::new("kubectl")
+			.args(["--kubeconfig", "/etc/kubernetes/admin.conf"])
 			.args(["get", "deployment", "istiod", "-n", "istio-system"])
+			.stdout(Stdio::null())
+			.stderr(Stdio::null())
 			.status()
 			.expect("Fatal failure to check Istio installation.")
 			.success();
