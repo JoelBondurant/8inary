@@ -1,6 +1,7 @@
 pub mod containerd;
 pub mod control_plane;
 pub mod disable_swap;
+pub mod firewall;
 pub mod helm;
 pub mod istio;
 pub mod kernel_modules;
@@ -10,6 +11,7 @@ pub mod sysctl;
 pub use containerd::Containerd;
 pub use control_plane::ControlPlane;
 pub use disable_swap::DisableSwap;
+pub use firewall::Firewall;
 pub use helm::Helm;
 pub use istio::Istio;
 pub use kernel_modules::KernelModules;

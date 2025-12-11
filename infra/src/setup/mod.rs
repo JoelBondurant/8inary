@@ -2,7 +2,7 @@ mod steps;
 mod utils;
 
 use crate::setup::steps::{
-	Containerd, ControlPlane, DisableSwap, Helm, Istio, KernelModules, Kubes, Sysctl,
+	Containerd, ControlPlane, DisableSwap, Firewall, Helm, Istio, KernelModules, Kubes, Sysctl,
 };
 use tracing::info;
 
@@ -13,7 +13,7 @@ pub trait SetupStep {
 }
 
 pub fn setup() {
-	info!("Kubernetes setup started.");
+	info!("Infrastructure setup started.");
 	const SETUP_STEPS: &[&dyn SetupStep] = &[
 		&DisableSwap,
 		&KernelModules,
@@ -21,6 +21,7 @@ pub fn setup() {
 		&Containerd,
 		&Kubes,
 		&Helm,
+		&Firewall,
 		&ControlPlane,
 		&Istio,
 	];
@@ -32,5 +33,5 @@ pub fn setup() {
 			}
 		}
 	}
-	info!("Kubernetes setup finished.");
+	info!("Infrastructure setup finished.");
 }

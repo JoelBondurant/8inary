@@ -67,45 +67,23 @@ impl SetupStep for ControlPlane {
 				info!("This machine is a worker, skipping control plane setup.");
 			}
 			inventory::MachineRole::ControlPlaneRoot => {
-				setup_control_plane_pre();
 				setup_control_plane_root();
-				setup_control_plane_post();
+				remove_noschedule_taint();
 			}
 			inventory::MachineRole::ControlPlane => {
-				setup_control_plane_pre();
 				setup_control_plane();
-				setup_control_plane_post();
+				remove_noschedule_taint();
 			}
 		}
 		info!("Control plane setup finished.");
 	}
 }
 
-fn setup_control_plane_pre() {
-	info!("Opening Kubernetes ports.");
-	Command::new("sh")
-		.arg("-c")
-		.arg(
-			r#"
-			sudo ufw allow from 192.168.0.0/16 to any port 2379 proto tcp comment 'etcd client'
-			sudo ufw allow from 192.168.0.0/16 to any port 2380 proto tcp comment 'etcd peer'
-			sudo ufw allow from 192.168.0.0/16 to any port 6443 proto tcp comment 'kube-apiserver'
-			sudo ufw allow from 192.168.0.0/16 to any port 8472 proto udp comment 'cilium vxlan'
-			sudo ufw allow from 192.168.0.0/16 to any port 10250 proto tcp comment 'kubelet'
-			sudo ufw allow from 192.168.0.0/16 to any port 10257 proto tcp comment 'controller-manager'
-			sudo ufw allow from 192.168.0.0/16 to any port 10259 proto tcp comment 'scheduler'
-			sudo ufw reload
-		"#,
-		)
-		.status()
-		.expect("Fatal failure in port opening.");
-	info!("Kubernetes ports are open.");
-}
-
-fn setup_control_plane_post() {
+fn remove_noschedule_taint() {
 	info!("Removing NoSchedule taint for control plane worker mode.");
 	sleep(Duration::from_secs(4));
 	Command::new("kubectl")
+		.args(["--kubeconfig", "/etc/kubernetes/admin.conf"])
 		.args([
 			"taint",
 			"nodes",
@@ -374,6 +352,17 @@ fn setup_control_plane() {
 			home, home, user, user, home
 		))
 		.status()
-		.expect("Fatal failure to setup Kubeconfig.");
+		.expect("Fatal failure to setup Kubeconfig for user.");
+	Command::new("sh")
+		.arg("-c")
+		.arg(
+			r#"
+			sudo mkdir -p /root/.kube
+			sudo cp -f /etc/kubernetes/admin.conf /root/.kube/config
+			sudo chmod 600 /root/.kube/config
+		"#,
+		)
+		.status()
+		.expect("Fatal failure to setup Kubeconfig for root.");
 	info!("Kubeconfig set for current user.");
 }
