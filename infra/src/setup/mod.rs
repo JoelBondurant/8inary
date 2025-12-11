@@ -2,7 +2,8 @@ mod steps;
 mod utils;
 
 use crate::setup::steps::{
-	Containerd, ControlPlane, DisableSwap, Firewall, Helm, Istio, KernelModules, Kubes, Sysctl,
+	Containerd, ControlPlane, DisableSwap, Firewall, Helm, IdentityDatabase, Istio, KernelModules,
+	Kubes, Sysctl,
 };
 use tracing::info;
 
@@ -24,6 +25,7 @@ pub fn setup() {
 		&Firewall,
 		&ControlPlane,
 		&Istio,
+		&IdentityDatabase,
 	];
 	for step in SETUP_STEPS {
 		if !step.check() {
