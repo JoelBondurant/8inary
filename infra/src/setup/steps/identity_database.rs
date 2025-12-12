@@ -96,7 +96,7 @@ impl SetupStep for IdentityDatabase {
 					apiVersion: pingcap.com/v1alpha1
 					kind: TidbCluster
 					metadata:
-					  name: basic
+					  name: {NAMESPACE}
 					  namespace: {NAMESPACE}
 					spec:
 					  version: v8.5.2
@@ -104,7 +104,7 @@ impl SetupStep for IdentityDatabase {
 					  pvReclaimPolicy: Retain
 					  pd:
 						baseImage: pingcap/pd
-						replicas: 1
+						replicas: 5
 						requests:
 						  storage: "10Gi"
 						tolerations:
@@ -113,7 +113,7 @@ impl SetupStep for IdentityDatabase {
 						  effect: NoSchedule
 					  tikv:
 						baseImage: pingcap/tikv
-						replicas: 1
+						replicas: 5
 						requests:
 						  storage: "100Gi"
 						tolerations:
@@ -122,7 +122,7 @@ impl SetupStep for IdentityDatabase {
 						  effect: NoSchedule
 					  tidb:
 						baseImage: pingcap/tidb
-						replicas: 1
+						replicas: 5
 						service:
 						  type: ClusterIP
 						tolerations:
@@ -181,14 +181,6 @@ impl SetupStep for IdentityDatabase {
 					  storageClassName: local-storage
 					  local:
 						path: /mnt/disks/identity/pd
-					  nodeAffinity:
-						required:
-						  nodeSelectorTerms:
-						  - matchExpressions:
-							- key: kubernetes.io/hostname
-							  operator: In
-							  values:
-							  - mini
 					---
 					apiVersion: v1
 					kind: PersistentVolume
@@ -203,14 +195,6 @@ impl SetupStep for IdentityDatabase {
 					  storageClassName: local-storage
 					  local:
 						path: /mnt/disks/identity/tikv
-					  nodeAffinity:
-						required:
-						  nodeSelectorTerms:
-						  - matchExpressions:
-							- key: kubernetes.io/hostname
-							  operator: In
-							  values:
-							  - mini
 					---
 					apiVersion: v1
 					kind: PersistentVolume
@@ -225,14 +209,6 @@ impl SetupStep for IdentityDatabase {
 					  storageClassName: local-storage
 					  local:
 						path: /mnt/disks/identity/monitor
-					  nodeAffinity:
-						required:
-						  nodeSelectorTerms:
-						  - matchExpressions:
-							- key: kubernetes.io/hostname
-							  operator: In
-							  values:
-							  - mini
 					EOF"#
 					.replace("{NAMESPACE}", IdentityDatabase::NAMESPACE),
 			)
@@ -243,103 +219,284 @@ impl SetupStep for IdentityDatabase {
 			.args(["apply", "-f", "-"])
 			.arg(
 				r#"<<EOF
+					---
+					# Policy 1: TiDB Component Communication (Port-Specific)
 					apiVersion: cilium.io/v2
 					kind: CiliumNetworkPolicy
 					metadata:
-					  name: allow-tidb-operator
+					  name: tidb-component-communication
 					  namespace: {NAMESPACE}
 					spec:
-					  endpointSelector: {}
+					  endpointSelector:
+						matchLabels:
+						  app.kubernetes.io/component: tidb
 					  ingress:
+					  # Allow TiDB clients from same namespace
 					  - fromEndpoints:
 						- matchLabels:
 							io.kubernetes.pod.namespace: {NAMESPACE}
+						toPorts:
+						- ports:
+						  - port: "4000"
+							protocol: TCP
+							rules:
+								tcp:
+								- method: "TLS"
+					  # Allow status port for monitoring
 					  - fromEndpoints:
 						- matchLabels:
 							io.kubernetes.pod.namespace: {NAMESPACE}
+							app.kubernetes.io/component: prometheus
+						toPorts:
+						- ports:
+						  - port: "10080"
+							protocol: TCP
 					  egress:
+					  # Allow connection to PD servers
 					  - toEndpoints:
 						- matchLabels:
 							io.kubernetes.pod.namespace: {NAMESPACE}
+							app.kubernetes.io/component: pd
+						toPorts:
+						- ports:
+						  - port: "2379"
+							protocol: TCP
+					  # DNS resolution
 					  - toEndpoints:
 						- matchLabels:
 							io.kubernetes.pod.namespace: kube-system
 							k8s-app: kube-dns
-					  - toFQDNs:
-						- matchPattern: "*"
+						toPorts:
+						- ports:
+						  - port: "53"
+							protocol: UDP
+						  - port: "53"
+							protocol: TCP
+
 					---
+					# Policy 2: PD (Placement Driver) Communication
 					apiVersion: cilium.io/v2
 					kind: CiliumNetworkPolicy
 					metadata:
-					  name: allow-cross-namespace
+					  name: pd-communication
 					  namespace: {NAMESPACE}
 					spec:
-					  endpointSelector: {}
+					  endpointSelector:
+						matchLabels:
+						  app.kubernetes.io/component: pd
+					  ingress:
+					  # Allow TiDB servers to connect
+					  - fromEndpoints:
+						- matchLabels:
+							io.kubernetes.pod.namespace: {NAMESPACE}
+							app.kubernetes.io/component: tidb
+						toPorts:
+						- ports:
+						  - port: "2379"
+							protocol: TCP
+					  # Allow TiKV servers to connect
+					  - fromEndpoints:
+						- matchLabels:
+							io.kubernetes.pod.namespace: {NAMESPACE}
+							app.kubernetes.io/component: tikv
+						toPorts:
+						- ports:
+						  - port: "2379"
+							protocol: TCP
+					  # PD peer communication
+					  - fromEndpoints:
+						- matchLabels:
+							io.kubernetes.pod.namespace: {NAMESPACE}
+							app.kubernetes.io/component: pd
+						toPorts:
+						- ports:
+						  - port: "2380"
+							protocol: TCP
 					  egress:
+					  # PD peer communication
 					  - toEndpoints:
 						- matchLabels:
 							io.kubernetes.pod.namespace: {NAMESPACE}
+							app.kubernetes.io/component: pd
+						toPorts:
+						- ports:
+						  - port: "2380"
+							protocol: TCP
+					  # DNS resolution
 					  - toEndpoints:
 						- matchLabels:
 							io.kubernetes.pod.namespace: kube-system
 							k8s-app: kube-dns
-					  - toFQDNs:
-						- matchPattern: "*"
-					  ingress:
-					  - fromEndpoints:
-						- matchLabels:
-							io.kubernetes.pod.namespace: {NAMESPACE}
+						toPorts:
+						- ports:
+						  - port: "53"
+							protocol: UDP
+
 					---
+					# Policy 3: TiKV Storage Communication
 					apiVersion: cilium.io/v2
 					kind: CiliumNetworkPolicy
 					metadata:
-					  name: allow-api-server-access
+					  name: tikv-communication
 					  namespace: {NAMESPACE}
 					spec:
-					  endpointSelector: {}
-					  egress:
-					  - toEndpoints:
-						- matchLabels:
-							io.kubernetes.pod.namespace: {NAMESPACE}
-					  - toEndpoints:
-						- matchLabels:
-							io.kubernetes.pod.namespace: kube-system
-					  - toEndpoints:
-						- matchLabels:
-							io.kubernetes.pod.namespace: default
-					  - toServices:
-						- k8sService:
-							serviceName: kubernetes
-							namespace: default
-					  - toFQDNs:
-						- matchPattern: "*"
-					  - toEntities:
-						- kube-apiserver
-						- host
-					---
-					apiVersion: cilium.io/v2
-					kind: CiliumNetworkPolicy
-					metadata:
-					  name: allow-tidb-full-access
-					  namespace: {NAMESPACE}
-					spec:
-					  endpointSelector: {}
+					  endpointSelector:
+						matchLabels:
+						  app.kubernetes.io/component: tikv
 					  ingress:
+					  # Allow TiDB to connect
 					  - fromEndpoints:
 						- matchLabels:
 							io.kubernetes.pod.namespace: {NAMESPACE}
+							app.kubernetes.io/component: tidb
+						toPorts:
+						- ports:
+						  - port: "20160"
+							protocol: TCP
+					  # TiKV peer communication
+					  - fromEndpoints:
+						- matchLabels:
+							io.kubernetes.pod.namespace: {NAMESPACE}
+							app.kubernetes.io/component: tikv
+						toPorts:
+						- ports:
+						  - port: "20160"
+							protocol: TCP
+					  # Allow PD to connect
+					  - fromEndpoints:
+						- matchLabels:
+							io.kubernetes.pod.namespace: {NAMESPACE}
+							app.kubernetes.io/component: pd
+						toPorts:
+						- ports:
+						  - port: "20160"
+							protocol: TCP
 					  egress:
+					  # Connect to PD
 					  - toEndpoints:
 						- matchLabels:
 							io.kubernetes.pod.namespace: {NAMESPACE}
+							app.kubernetes.io/component: pd
+						toPorts:
+						- ports:
+						  - port: "2379"
+							protocol: TCP
+					  # TiKV peer communication
+					  - toEndpoints:
+						- matchLabels:
+							io.kubernetes.pod.namespace: {NAMESPACE}
+							app.kubernetes.io/component: tikv
+						toPorts:
+						- ports:
+						  - port: "20160"
+							protocol: TCP
+					  # DNS resolution
 					  - toEndpoints:
 						- matchLabels:
 							io.kubernetes.pod.namespace: kube-system
-					  - toFQDNs:
-						- matchPattern: "*"
+							k8s-app: kube-dns
+						toPorts:
+						- ports:
+						  - port: "53"
+							protocol: UDP
+
+					---
+					# Policy 4: TiDB Operator Access (Restricted)
+					apiVersion: cilium.io/v2
+					kind: CiliumNetworkPolicy
+					metadata:
+					  name: tidb-operator
+					  namespace: {NAMESPACE}
+					spec:
+					  endpointSelector:
+						matchLabels:
+						  app.kubernetes.io/name: tidb-operator
+					  egress:
+					  # API server access
 					  - toEntities:
 						- kube-apiserver
-						- host
+						toPorts:
+						- ports:
+						  - port: "443"
+							protocol: TCP
+						  - port: "6443"
+							protocol: TCP
+					  # Access to TiDB components for management
+					  - toEndpoints:
+						- matchLabels:
+							io.kubernetes.pod.namespace: {NAMESPACE}
+						toPorts:
+						- ports:
+						  - port: "4000"   # TiDB
+							protocol: TCP
+						  - port: "2379"   # PD client
+							protocol: TCP
+						  - port: "20160"  # TiKV
+							protocol: TCP
+						  - port: "10080"  # TiDB status
+							protocol: TCP
+					  # DNS resolution
+					  - toEndpoints:
+						- matchLabels:
+							io.kubernetes.pod.namespace: kube-system
+							k8s-app: kube-dns
+						toPorts:
+						- ports:
+						  - port: "53"
+							protocol: UDP
+					  # - toFQDNs:
+					  #   - matchName: "8inary.com"
+
+					---
+					# Policy 5: External Client Access
+					apiVersion: cilium.io/v2
+					kind: CiliumNetworkPolicy
+					metadata:
+					  name: tidb-external-clients
+					  namespace: {NAMESPACE}
+					spec:
+					  endpointSelector:
+						matchLabels:
+						  app.kubernetes.io/component: tidb
+					  ingress:
+					  # Allow specific namespaces/apps to connect
+					  - fromEndpoints:
+						- matchLabels:
+							io.kubernetes.pod.namespace: {NAMESPACE}
+							app: {NAMESPACE}
+						toPorts:
+						- ports:
+						  - port: "4000"
+							protocol: TCP
+							rules:
+								tcp:
+								- method: "TLS"
+
+					---
+					# Policy 6: Monitoring Access (Prometheus/Grafana)
+					apiVersion: cilium.io/v2
+					kind: CiliumNetworkPolicy
+					metadata:
+					  name: tidb-monitoring
+					  namespace: {NAMESPACE}
+					spec:
+					  endpointSelector:
+						matchLabels:
+						  app.kubernetes.io/instance: {NAMESPACE}-db
+					  ingress:
+					  # Allow Prometheus scraping
+					  - fromEndpoints:
+						- matchLabels:
+							io.kubernetes.pod.namespace: monitoring
+							app: prometheus
+						toPorts:
+						- ports:
+						  - port: "10080"  # TiDB status port
+							protocol: TCP
+						  - port: "2379"   # PD metrics
+							protocol: TCP
+						  - port: "20180"  # TiKV status port
+							protocol: TCP
 					EOF"#
 					.replace("{NAMESPACE}", IdentityDatabase::NAMESPACE),
 			)
@@ -371,9 +528,9 @@ impl SetupStep for IdentityDatabase {
 						ARGS="--name=\${HOSTNAME} \
 						--data-dir=/var/lib/pd \
 						--peer-urls=http://0.0.0.0:2380 \
-						--advertise-peer-urls=http://\${HOSTNAME}.basic-pd-peer.{NAMESPACE}.svc:2380 \
+						--advertise-peer-urls=http://\${HOSTNAME}.{NAMESPACE}-pd-peer.{NAMESPACE}.svc:2380 \
 						--client-urls=http://0.0.0.0:2379 \
-						--advertise-client-urls=http://\${HOSTNAME}.basic-pd-peer.{NAMESPACE}.svc:2379"
+						--advertise-client-urls=http://\${HOSTNAME}.{NAMESPACE}-pd-peer.{NAMESPACE}.svc:2379"
 						if [ -f /etc/pd/config-file ]; then
 						  ARGS="\${ARGS} --config=/etc/pd/config-file"
 						fi
@@ -458,6 +615,32 @@ impl SetupStep for IdentityDatabase {
 						  ARGS="\${ARGS} --config=/etc/tidb/config-file"
 						fi
 						exec /tidb-server \${ARGS}
+				EOF"#
+					.replace("{NAMESPACE}", IdentityDatabase::NAMESPACE),
+			)
+			.status()
+			.expect("Fatal failure to apply TiDB config map.");
+		Command::new("kubectl")
+			.args(["--kubeconfig", "/etc/kubernetes/admin.conf"])
+			.args(["label", "namespace", IdentityDatabase::NAMESPACE])
+			.arg("istio-injection=enabled")
+			.arg("--overwrite")
+			.status()
+			.expect("Fatal failure to label identity namespace with istio-injection.");
+		Command::new("kubectl")
+			.args(["--kubeconfig", "/etc/kubernetes/admin.conf"])
+			.args(["apply", "-f", "-"])
+			.arg(
+				r#"
+				<<EOF
+					apiVersion: security.istio.io/v1
+					kind: PeerAuthentication
+					metadata:
+					  name: default-identity-mtls
+					  namespace: identity
+					spec:
+					  mtls:
+						mode: STRICT
 				EOF"#
 					.replace("{NAMESPACE}", IdentityDatabase::NAMESPACE),
 			)
