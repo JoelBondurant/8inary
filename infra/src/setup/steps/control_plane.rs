@@ -1,4 +1,5 @@
 use crate::context;
+use crate::error::InstallError;
 use crate::setup::utils::inventory;
 use crate::setup::SetupStep;
 use std::{
@@ -31,11 +32,11 @@ impl SetupStep for ControlPlane {
 		"ControlPlane"
 	}
 
-	fn check(&self) -> bool {
+	fn check(&self) -> Result<bool, InstallError> {
 		match inventory::this().role {
 			inventory::MachineRole::Worker => {
 				info!("This machine is a worker, no control plane setup required.");
-				return true;
+				return Ok(true);
 			}
 			inventory::MachineRole::ControlPlaneRoot | inventory::MachineRole::ControlPlane => {}
 		}
@@ -43,23 +44,21 @@ impl SetupStep for ControlPlane {
 			&Command::new("kubectl")
 				.args(["--kubeconfig", "/etc/kubernetes/admin.conf"])
 				.args(["get", "node", &context::get().hostname, "--show-labels"])
-				.output()
-				.expect("Fatal failure resolving control plane status.")
+				.output()?
 				.stdout,
-		)
-		.expect("Fatal failure to check control plane membership.")
+		)?
 		.trim()
 		.contains("node-role.kubernetes.io/control-plane=");
 		if is_setup {
 			info!("ControlPlane is already set up.");
-			true
+			Ok(true)
 		} else {
 			info!("ControlPlane is not set up.");
-			false
+			Ok(false)
 		}
 	}
 
-	fn set(&self) {
+	fn set(&self) -> Result<(), InstallError> {
 		info!("ControlPlane setup started.");
 		info!("Machine Id: {}", inventory::this().id);
 		match inventory::this().role {
@@ -67,19 +66,20 @@ impl SetupStep for ControlPlane {
 				info!("This machine is a worker, skipping control plane setup.");
 			}
 			inventory::MachineRole::ControlPlaneRoot => {
-				setup_control_plane_root();
-				remove_noschedule_taint();
+				setup_control_plane_root()?;
+				remove_noschedule_taint()?;
 			}
 			inventory::MachineRole::ControlPlane => {
-				setup_control_plane();
-				remove_noschedule_taint();
+				setup_control_plane()?;
+				remove_noschedule_taint()?;
 			}
 		}
 		info!("Control plane setup finished.");
+		Ok(())
 	}
 }
 
-fn remove_noschedule_taint() {
+fn remove_noschedule_taint() -> Result<(), InstallError> {
 	info!("Removing NoSchedule taint for control plane worker mode.");
 	sleep(Duration::from_secs(4));
 	Command::new("kubectl")
@@ -90,12 +90,12 @@ fn remove_noschedule_taint() {
 			&context::get().hostname,
 			"node-role.kubernetes.io/control-plane:NoSchedule-",
 		])
-		.status()
-		.expect("Fatal failure in NoSchedule taint removal.");
+		.status()?;
 	info!("NoSchedule taint removed.");
+	Ok(())
 }
 
-fn setup_control_plane_root() {
+fn setup_control_plane_root() -> Result<(), InstallError> {
 	info!("Bootstrapping control plane root node.");
 	info!("Pulling kube-vip container.");
 	Command::new("ctr")
@@ -107,8 +107,7 @@ fn setup_control_plane_root() {
 			ControlPlane::KUBE_VIP_VERSION,
 			ControlPlane::KUBE_VIP_CONTAINER_HASH,
 		))
-		.status()
-		.expect("Fatal failure to pull kube-vip container.");
+		.status()?;
 	info!("Installing cilium cluster mesh.");
 	Command::new("sh")
 		.arg("-c")
@@ -125,8 +124,7 @@ fn setup_control_plane_root() {
 			rm -f cilium-linux-amd64.tar.gz*
 		"#
 		, ControlPlane::CILIUM_CLI_VERSION))
-		.status()
-		.expect("Fatal Cilium install failure.");
+		.status()?;
 	info!("Cilium is installed.");
 	info!("Hard reset Kubernetes control plane root node.");
 	Command::new("sh")
@@ -149,8 +147,7 @@ fn setup_control_plane_root() {
 			sudo systemctl start kubelet || true
 		"#,
 		)
-		.status()
-		.expect("Fatal Kubernetes reset/cleanup failure.");
+		.status()?;
 	info!("Node has been hard reset.");
 	info!("Bootstrapping kube-vip config.");
 	let kube_vip_config_out = Command::new("ctr")
@@ -174,13 +171,10 @@ fn setup_control_plane_root() {
 		.arg("--arp")
 		.arg("--controlplane")
 		.arg("--leaderElection")
-		.output()
-		.expect("Fatal failure to run kube-vip.");
-	let kube_vip_config = String::from_utf8(kube_vip_config_out.stdout)
-		.expect("kube-vip manifest returned non-utf-8 output.");
+		.output()?;
+	let kube_vip_config = String::from_utf8(kube_vip_config_out.stdout)?;
 	let kube_vip_config_path = "/etc/kubernetes/manifests/kube-vip.yaml";
-	fs::write(kube_vip_config_path, kube_vip_config)
-		.expect("Fatal failure to write kube-vip config.");
+	fs::write(kube_vip_config_path, kube_vip_config)?;
 	info!("Sleeping for kube-vip to bootstrap.");
 	sleep(Duration::from_secs(4));
 	info!("Kube-vip config written.");
@@ -202,8 +196,7 @@ fn setup_control_plane_root() {
 		.arg("--feature-gates=UserNamespacesSupport=true")
 		.arg("--ignore-preflight-errors=NumCPU,Mem")
 		.arg("--skip-phases=addon/kube-proxy")
-		.status()
-		.expect("Fatal kubeadm init failure.");
+		.status()?;
 	info!("Kubeadm initalized.");
 	sleep(Duration::from_secs(2));
 	info!("Setting cluster trust using embedded CA data.");
@@ -219,8 +212,7 @@ fn setup_control_plane_root() {
 			ControlPlane::KUBE_VIP,
 			ControlPlane::KUBE_VIP_PORT,
 		))
-		.status()
-		.expect("Fatal failure setting cluster trust configuration.");
+		.status()?;
 	sleep(Duration::from_secs(2));
 	let home = &context::get().home;
 	let user = &context::get().user;
@@ -234,8 +226,7 @@ fn setup_control_plane_root() {
 		"#,
 			home, home, user, user, home
 		))
-		.status()
-		.expect("Fatal failure to setup Kubeconfig.");
+		.status()?;
 	info!("Kubeconfig set for current user.");
 	sleep(Duration::from_secs(2));
 	info!("Cilium installing.");
@@ -254,12 +245,12 @@ fn setup_control_plane_root() {
 		.args(["--set", "tls.ca.enabled=true"])
 		.args(["--set", "tls.ca.manage=true"])
 		.arg("--wait")
-		.status()
-		.expect("Fatal failure to install Cilium.");
+		.status()?;
 	info!("Cilium installed.");
+	Ok(())
 }
 
-fn get_control_plane_join_command() -> String {
+fn get_control_plane_join_command() -> Result<String, InstallError> {
 	let home = &context::get().home;
 	let mut child = Command::new("ssh")
 		.args(["-o", "LogLevel=ERROR"])
@@ -270,12 +261,10 @@ fn get_control_plane_join_command() -> String {
 		.stdin(Stdio::piped())
 		.stdout(Stdio::piped())
 		.stderr(Stdio::piped())
-		.spawn()
-		.expect("Failed to spawn ssh to first control-plane node.");
+		.spawn()?;
 	if let Some(mut stdin) = child.stdin.take() {
-		stdin
-			.write_all(
-				br#"
+		stdin.write_all(
+			br#"
 				set -e
 				sudo -n bash -c '
 					export KUBECONFIG=/etc/kubernetes/admin.conf
@@ -283,31 +272,18 @@ fn get_control_plane_join_command() -> String {
 					kubeadm token create --print-join-command --certificate-key $K8S_CERT_KEY
 				'
 			"#,
-			)
-			.expect("Failed to write script to ssh stdin.");
+		)?;
 	}
-	let output = child
-		.wait_with_output()
-		.expect("Fatal join command build failure.");
-	if !output.status.success() {
-		let stderr = String::from_utf8_lossy(&output.stderr);
-		panic!(
-			"Failed to get join command from first node. Stderr: {}",
-			stderr
-		);
-	}
-	let join_cmd = String::from_utf8(output.stdout)
-		.expect("Join command contains invalid UTF-8.")
-		.trim()
-		.to_owned();
+	let output = child.wait_with_output()?;
+	let join_cmd = String::from_utf8(output.stdout)?.trim().to_owned();
 	if join_cmd.is_empty() || !join_cmd.contains("--control-plane") {
 		panic!("Received empty or invalid join command: {join_cmd:?}");
 	}
 	info!("Successfully obtained fresh control-plane join command.");
-	join_cmd + " --v=5"
+	Ok(join_cmd + " --v=5")
 }
 
-fn setup_control_plane() {
+fn setup_control_plane() -> Result<(), InstallError> {
 	info!("Joining additional control plane node.");
 	info!("Hard reset Kubernetes control plane node.");
 	Command::new("sh")
@@ -327,16 +303,11 @@ fn setup_control_plane() {
 			sudo systemctl start kubelet || true
 		"#,
 		)
-		.status()
-		.expect("Fatal Kubernetes reset/cleanup failure.");
+		.status()?;
 	info!("Node has been hard reset.");
-	let join_command = get_control_plane_join_command();
+	let join_command = get_control_plane_join_command()?;
 	info!("Executing join command:\n{join_command}\n");
-	Command::new("bash")
-		.arg("-c")
-		.arg(join_command)
-		.status()
-		.expect("Fatal failure in control plane join command.");
+	Command::new("bash").arg("-c").arg(join_command).status()?;
 	info!("This node has joined the control plane.");
 	sleep(Duration::from_secs(2));
 	let home = &context::get().home;
@@ -351,8 +322,7 @@ fn setup_control_plane() {
 		"#,
 			home, home, user, user, home
 		))
-		.status()
-		.expect("Fatal failure to setup Kubeconfig for user.");
+		.status()?;
 	Command::new("sh")
 		.arg("-c")
 		.arg(
@@ -362,7 +332,7 @@ fn setup_control_plane() {
 			sudo chmod 600 /root/.kube/config
 		"#,
 		)
-		.status()
-		.expect("Fatal failure to setup Kubeconfig for root.");
+		.status()?;
 	info!("Kubeconfig set for current user.");
+	Ok(())
 }

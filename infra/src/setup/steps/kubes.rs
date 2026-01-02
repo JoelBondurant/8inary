@@ -1,3 +1,4 @@
+use crate::error::InstallError;
 use crate::setup::utils::pkg;
 use crate::setup::SetupStep;
 use std::{fs, process::Command};
@@ -17,39 +18,36 @@ impl SetupStep for Kubes {
 		"Kubes"
 	}
 
-	fn check(&self) -> bool {
+	fn check(&self) -> Result<bool, InstallError> {
 		for package_name in Kubes::PACKAGE_NAMES {
-			let is_installed = pkg::is_installed(package_name);
+			let is_installed = pkg::is_installed(package_name)?;
 			if !is_installed {
 				info!("{package_name} is not installed.");
-				return false;
+				return Ok(false);
 			}
 		}
 		info!("Kubes are installed.");
-		true
+		Ok(true)
 	}
 
-	fn set(&self) {
+	fn set(&self) -> Result<(), InstallError> {
 		info!("Installing Kubernetes tooling via apt-get.");
 		let key_command = format!(
 			"curl -fsSL {}/Release.key | gpg --dearmor --yes -o {}",
 			Kubes::K8S_BASE_URL,
 			Kubes::APT_KEY_PATH,
 		);
-		Command::new("sh")
-			.arg("-c")
-			.arg(key_command)
-			.status()
-			.unwrap();
+		Command::new("sh").arg("-c").arg(key_command).status()?;
 		let apt_config_txt = format!(
 			"deb [signed-by={}] {} /",
 			Kubes::APT_KEY_PATH,
 			Kubes::K8S_BASE_URL,
 		);
-		fs::write(Kubes::APT_CONFIG_PATH, apt_config_txt).unwrap();
-		pkg::update();
-		pkg::install(Kubes::PACKAGE_NAMES);
-		pkg::mark(Kubes::PACKAGE_NAMES);
+		fs::write(Kubes::APT_CONFIG_PATH, apt_config_txt)?;
+		pkg::update()?;
+		pkg::install(Kubes::PACKAGE_NAMES)?;
+		pkg::mark(Kubes::PACKAGE_NAMES)?;
 		info!("Kubernetes tooling installed.");
+		Ok(())
 	}
 }

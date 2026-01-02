@@ -1,3 +1,4 @@
+use crate::error::InstallError;
 use crate::setup::utils::pkg;
 use crate::setup::SetupStep;
 use std::{fs, path::Path, process::Command};
@@ -15,16 +16,16 @@ impl SetupStep for Containerd {
 		"Containerd"
 	}
 
-	fn check(&self) -> bool {
-		let is_installed = pkg::is_installed(Containerd::PACKAGE_NAME);
+	fn check(&self) -> Result<bool, InstallError> {
+		let is_installed = pkg::is_installed(Containerd::PACKAGE_NAME)?;
 		if !is_installed {
 			info!("Containerd is not installed.");
-			return false;
+			return Ok(false);
 		}
 		let is_configured = Path::new(Containerd::CONFIG_PATH).exists();
 		if !is_configured {
 			info!("Containerd is not configured.");
-			return false;
+			return Ok(false);
 		}
 		let is_active = Command::new("systemctl")
 			.args(["is-active", "--quiet", Containerd::PACKAGE_NAME])
@@ -32,35 +33,45 @@ impl SetupStep for Containerd {
 			.is_ok_and(|s| s.success());
 		if !is_active {
 			info!("Containerd is not active.");
-			false
+			Ok(false)
 		} else {
-			info!("Containerd is already configured and active.");
-			true
+			Ok(true)
 		}
 	}
 
-	fn set(&self) {
-		info!("Installing containerd via apt-get.");
-		pkg::install(&[Containerd::PACKAGE_NAME]);
-		fs::create_dir_all("/etc/containerd").expect("Failed to create /etc/containerd");
+	fn set(&self) -> Result<(), InstallError> {
+		pkg::install(&[Containerd::PACKAGE_NAME])?;
+		fs::create_dir_all(format!("/etc/{}", Containerd::PACKAGE_NAME))?;
 		let config_path = Path::new(Containerd::CONFIG_PATH);
-		if !config_path.exists() || fs::read(config_path).unwrap().is_empty() {
+		if !config_path.exists() || fs::read(config_path)?.is_empty() {
 			info!("Generating default containerd config.");
 			let default_config = Command::new(Containerd::PACKAGE_NAME)
 				.arg("config")
 				.arg("default")
 				.output()
-				.expect("Fatal containerd config failure.");
-			fs::write(config_path, default_config.stdout)
-				.expect("Failed to write /etc/containerd/config.toml");
+				.map_err(|err| InstallError::CommandLaunch {
+					cmd: format!("{} config default", Containerd::PACKAGE_NAME),
+					source: err,
+				})?;
+			fs::write(config_path, default_config.stdout)?;
 		} else {
 			info!("Containerd config already exists, skipping generation.");
 		}
 		info!("Restarting containerd service.");
-		Command::new("systemctl")
+		let status = Command::new("systemctl")
 			.args(["restart", Containerd::PACKAGE_NAME])
 			.status()
-			.expect("Fatal failure to restart containerd.");
-		info!("Containerd successfully installed.");
+			.map_err(|source| InstallError::CommandLaunch {
+				cmd: format!("systemctl restart {}", Containerd::PACKAGE_NAME),
+				source,
+			})?;
+		if !status.success() {
+			return Err(InstallError::CommandFailed {
+				cmd: format!("systemctl restart {}", Containerd::PACKAGE_NAME),
+				status,
+				stderr: None,
+			});
+		}
+		Ok(())
 	}
 }

@@ -1,6 +1,7 @@
 mod steps;
 mod utils;
 
+use crate::error::InstallError;
 use crate::setup::steps::{
 	Containerd, ControlPlane, DisableSwap, Firewall, Helm, IdentityDatabase, Istio, KernelModules,
 	Kubes, Sysctl,
@@ -9,31 +10,36 @@ use tracing::info;
 
 pub trait SetupStep {
 	fn name(&self) -> &'static str;
-	fn check(&self) -> bool;
-	fn set(&self);
+	fn check(&self) -> Result<bool, InstallError>;
+	fn set(&self) -> Result<(), InstallError>;
 }
 
-pub fn setup() {
-	info!("Infrastructure setup started.");
-	const SETUP_STEPS: &[&dyn SetupStep] = &[
-		&DisableSwap,
-		&KernelModules,
-		&Sysctl,
-		&Containerd,
-		&Kubes,
-		&Helm,
-		&Firewall,
-		&ControlPlane,
-		&Istio,
-		&IdentityDatabase,
-	];
+const SETUP_STEPS: &[&dyn SetupStep] = &[
+	&DisableSwap,
+	&KernelModules,
+	&Sysctl,
+	&Containerd,
+	&Kubes,
+	&Helm,
+	&Firewall,
+	&ControlPlane,
+	&Istio,
+	&IdentityDatabase,
+];
+
+pub fn setup() -> Result<(), InstallError> {
 	for step in SETUP_STEPS {
-		if !step.check() {
-			step.set();
-			if !step.check() {
-				panic!("Fatal install step failure: {}.", step.name());
+		let step_name = step.name();
+		info!("Checking step: {}.", step_name);
+		if !step.check()? {
+			info!("Applying step: {}.", step_name);
+			step.set()?;
+			if !step.check()? {
+				return Err(InstallError::StepFailed { step: step_name });
 			}
+		} else {
+			info!("Step already satisfied: {}.", step_name);
 		}
 	}
-	info!("Infrastructure setup finished.");
+	Ok(())
 }

@@ -1,3 +1,4 @@
+use crate::error::InstallError;
 use crate::setup::SetupStep;
 use std::{fs, process::Command};
 use tracing::info;
@@ -9,15 +10,15 @@ impl SetupStep for DisableSwap {
 		"DisableSwap"
 	}
 
-	fn check(&self) -> bool {
-		let is_swap_on = fs::read_to_string("/proc/swaps").unwrap().lines().count() > 1;
+	fn check(&self) -> Result<bool, InstallError> {
+		let is_swap_on = fs::read_to_string("/proc/swaps")?.lines().count() > 1;
 		if is_swap_on {
 			info!("Swap is enabled.");
-			return false;
+			return Ok(false);
 		}
 		let Ok(config_txt) = fs::read_to_string("/etc/fstab") else {
 			info!("fstab is missing or unreadable.");
-			return false;
+			return Ok(false);
 		};
 		let is_configured = config_txt
 			.lines()
@@ -28,20 +29,35 @@ impl SetupStep for DisableSwap {
 			});
 		if is_configured {
 			info!("Swap is enabled in fstab.");
-			return false;
+			return Ok(false);
 		}
-		info!("Swap is already disabled and absent in fstab.");
-		true
+		Ok(true)
 	}
 
-	fn set(&self) {
-		info!("Disabling swap.");
-		Command::new("swapoff")
+	fn set(&self) -> Result<(), InstallError> {
+		let output = Command::new("swapoff")
 			.arg("-a")
-			.status()
-			.expect("Fatal swapoff failure.");
+			.output()
+			.map_err(|source| InstallError::CommandLaunch {
+				cmd: "swapoff -a".to_owned(),
+				source,
+			})?;
+		let status = output.status;
+		if !status.success() {
+			let stderr = if output.stderr.is_empty() {
+				None
+			} else {
+				Some(String::from_utf8_lossy(&output.stderr).trim().to_owned())
+			};
+
+			return Err(InstallError::CommandFailed {
+				cmd: "swapoff -a".to_owned(),
+				status,
+				stderr,
+			});
+		}
 		let config_path = "/etc/fstab";
-		let original = fs::read_to_string(config_path).expect("Fatal fstab read failure.");
+		let original = fs::read_to_string(config_path)?;
 		let cleaned = original
 			.lines()
 			.filter(|line| {
@@ -58,7 +74,8 @@ impl SetupStep for DisableSwap {
 		};
 		if final_content.as_bytes() != original.as_bytes() {
 			info!("Removing swap entries from /etc/fstab.");
-			fs::write(config_path, final_content).expect("Fatal fstab write failure.");
+			fs::write(config_path, final_content)?;
 		}
+		Ok(())
 	}
 }

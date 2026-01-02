@@ -1,3 +1,4 @@
+use crate::error::InstallError;
 use crate::setup::SetupStep;
 use hex_literal::hex;
 use sha2::{Digest, Sha256};
@@ -15,23 +16,23 @@ impl SetupStep for Sysctl {
 		"Sysctl"
 	}
 
-	fn check(&self) -> bool {
+	fn check(&self) -> Result<bool, InstallError> {
 		const EXPECTED: [u8; 32] =
 			hex!("6e3f751b8409493b80fb7154ee21989dece3322d8b9018157ffef64dfbc10799");
 		let Ok(config_txt) = fs::read(Sysctl::CONFIG_PATH) else {
 			info!("Sysctl config missing or unreadable.");
-			return false;
+			return Ok(false);
 		};
 		let is_valid = Sha256::digest(&config_txt)[..] == EXPECTED;
 		if !is_valid {
 			info!("Kernel modules are misconfigured.");
-			return false;
+			return Ok(false);
 		}
 		info!("Sysctl already configured.");
-		true
+		Ok(true)
 	}
 
-	fn set(&self) {
+	fn set(&self) -> Result<(), InstallError> {
 		info!("Configuring sysctl.");
 		let config_txt = [
 			"net.bridge.bridge-nf-call-iptables = 1",
@@ -40,11 +41,9 @@ impl SetupStep for Sysctl {
 		]
 		.join("\n")
 			+ "\n";
-		fs::write(Sysctl::CONFIG_PATH, config_txt).expect("Fatal failure to write sysctl config.");
-		Command::new("sysctl")
-			.arg("--system")
-			.status()
-			.expect("Fatal sysctl failure.");
+		fs::write(Sysctl::CONFIG_PATH, config_txt)?;
+		Command::new("sysctl").arg("--system").status()?;
 		info!("Sysctl has been successfully configured.");
+		Ok(())
 	}
 }

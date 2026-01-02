@@ -1,3 +1,4 @@
+use crate::error::InstallError;
 use crate::setup::SetupStep;
 use std::{process::Command, thread::sleep, time::Duration};
 use tracing::info;

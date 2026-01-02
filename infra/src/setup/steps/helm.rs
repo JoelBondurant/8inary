@@ -1,3 +1,4 @@
+use crate::error::InstallError;
 use crate::setup::utils::pkg;
 use crate::setup::SetupStep;
 use std::{fs, process::Command};
@@ -18,38 +19,35 @@ impl SetupStep for Helm {
 		"Helm"
 	}
 
-	fn check(&self) -> bool {
-		if pkg::is_installed(Helm::PACKAGE_NAME) {
+	fn check(&self) -> Result<bool, InstallError> {
+		if pkg::is_installed(Helm::PACKAGE_NAME)? {
 			info!("Helm is already installed.");
-			true
+			Ok(true)
 		} else {
 			info!("Helm is not installed.");
-			false
+			Ok(false)
 		}
 	}
 
-	fn set(&self) {
+	fn set(&self) -> Result<(), InstallError> {
 		info!("Installing Helm.");
-		pkg::install(Helm::DEPENDENCIES);
+		pkg::install(Helm::DEPENDENCIES)?;
 		let key_command = format!(
 			"curl -fsSL {}/gpgkey | gpg --dearmor --yes -o {}",
 			Helm::BASE_KEY_URL,
 			Helm::APT_KEY_PATH,
 		);
-		Command::new("sh")
-			.arg("-c")
-			.arg(key_command)
-			.status()
-			.unwrap();
+		Command::new("sh").arg("-c").arg(key_command).status()?;
 		let apt_config_txt = format!(
 			"deb [signed-by={}] {}/any/ any main",
 			Helm::APT_KEY_PATH,
 			Helm::BASE_KEY_URL,
 		);
-		fs::write(Helm::APT_CONFIG_PATH, apt_config_txt).unwrap();
-		pkg::update();
-		pkg::install(&[Helm::PACKAGE_NAME]);
-		pkg::mark(&[Helm::PACKAGE_NAME]);
+		fs::write(Helm::APT_CONFIG_PATH, apt_config_txt)?;
+		pkg::update()?;
+		pkg::install(&[Helm::PACKAGE_NAME])?;
+		pkg::mark(&[Helm::PACKAGE_NAME])?;
 		info!("Helm has been installed.");
+		Ok(())
 	}
 }

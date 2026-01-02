@@ -1,5 +1,7 @@
+use crate::error::InstallError;
+use crate::setup::utils::kctl;
 use crate::setup::SetupStep;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use tracing::info;
 
 pub struct Istio;
@@ -14,25 +16,18 @@ impl SetupStep for Istio {
 		"Istio"
 	}
 
-	fn check(&self) -> bool {
-		let is_installed = Command::new("kubectl")
-			.args(["--kubeconfig", "/etc/kubernetes/admin.conf"])
-			.args(["get", "deployment", "istiod", "-n", "istio-system"])
-			.stdout(Stdio::null())
-			.stderr(Stdio::null())
-			.status()
-			.expect("Fatal failure to check Istio installation.")
-			.success();
+	fn check(&self) -> Result<bool, InstallError> {
+		let is_installed = kctl::is_deployment_installed("istio", "istio-system")?;
 		if is_installed {
 			info!("Istio is already installed.");
-			true
+			Ok(true)
 		} else {
 			info!("Istio is not installed.");
-			false
+			Ok(false)
 		}
 	}
 
-	fn set(&self) {
+	fn set(&self) -> Result<(), InstallError> {
 		info!("Installing Istio.");
 		Command::new("sh")
 			.arg("-c")
@@ -49,13 +44,20 @@ impl SetupStep for Istio {
 				Istio::VERSION,
 			))
 			.status()
-			.expect("Fatal failure in Istio installation.");
+			.map_err(|err| InstallError::CommandLaunch {
+				cmd: format!("istio path bash commands"),
+				source: err,
+			})?;
 		Command::new("istioctl")
 			.arg("install")
 			.args(["--kubeconfig", "/etc/kubernetes/admin.conf"])
 			.args(["--set", "profile=default"])
 			.arg("-y")
 			.status()
-			.expect("Fatal failure installing Istio into cluster.");
+			.map_err(|err| InstallError::CommandLaunch {
+				cmd: format!("istioctl --set profile=default -y"),
+				source: err,
+			})?;
+		Ok(())
 	}
 }

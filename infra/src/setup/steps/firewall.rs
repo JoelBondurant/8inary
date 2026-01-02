@@ -1,3 +1,4 @@
+use crate::error::InstallError;
 use crate::setup::SetupStep;
 use std::process::Command;
 use tracing::info;
@@ -78,11 +79,31 @@ impl SetupStep for Firewall {
 		"Firewall"
 	}
 
-	fn check(&self) -> bool {
+	fn check(&self) -> Result<bool, InstallError> {
 		let firewall_settings_output = Command::new("sudo")
 			.args(["ufw", "show", "added"])
 			.output()
-			.expect("Fatal failure to get firewall rules.");
+			.map_err(|source| InstallError::CommandLaunch {
+				cmd: "sudo ufw show added".to_owned(),
+				source,
+			})?;
+		let firewall_settings_status = firewall_settings_output.status;
+		if !firewall_settings_status.success() {
+			let stderr = if firewall_settings_output.stderr.is_empty() {
+				None
+			} else {
+				Some(
+					String::from_utf8_lossy(&firewall_settings_output.stderr)
+						.trim()
+						.to_owned(),
+				)
+			};
+			return Err(InstallError::CommandFailed {
+				cmd: "sudo ufw show added".to_owned(),
+				status: firewall_settings_status,
+				stderr,
+			});
+		}
 		let mut firewall_settings_sanssudo = str::from_utf8(&firewall_settings_output.stdout)
 			.expect("Fatal failure with non-utf8 firewall rules.")
 			.lines()
@@ -106,15 +127,14 @@ impl SetupStep for Firewall {
 		let is_setup = firewall_settings.join("\n") == Firewall::rule_commands();
 		if is_setup {
 			info!("Firewall ports are open.");
-			true
+			Ok(true)
 		} else {
 			info!("Firewall ports are not open.");
-			false
+			Ok(false)
 		}
 	}
 
-	fn set(&self) {
-		info!("Opening firewall ports.");
+	fn set(&self) -> Result<(), InstallError> {
 		Command::new("sh")
 			.arg("-c")
 			.arg(format!(
@@ -124,7 +144,7 @@ impl SetupStep for Firewall {
 			"#,
 				Firewall::rule_commands()
 			))
-			.status()
-			.expect("Fatal failure in port opening.");
+			.status()?;
+		Ok(())
 	}
 }
